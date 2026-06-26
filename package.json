@@ -1,5 +1,6 @@
 {
   "name": "propflow",
+  "type": "module" ,
   "version": "1.0.0",
   "description": "PropFlow Property Management Suite",
   "main": "js/server.js",
