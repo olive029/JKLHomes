@@ -4,7 +4,7 @@
    ============================================= */
 
 // === CONFIG ===
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = 'http://localhost:3002/api';
 
 // === GLOBAL STATE ===
 let tenants         = [];
@@ -588,6 +588,11 @@ function navigateTo(page, linkEl) {
     const bcCurrent = document.getElementById('bcCurrent');
     bcCurrent.textContent = bcNames[page] || page;
 
+    // Show the matching view, hide others
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    const viewEl = document.getElementById(`view-${page}`);
+    if (viewEl) viewEl.classList.add('active');
+
     // FIX: when linkEl is an anchor inside a dropdown, mark it active
     // without stripping the parent dropdown button's active class.
     if (linkEl) {
@@ -609,6 +614,12 @@ function navigateTo(page, linkEl) {
         document.getElementById('filterStatus').value = 'all';
         document.getElementById('searchInput').value  = '';
         displayTenants();
+    } else if (page === 'water-readings') {
+        displayWaterReadings();
+    } else if (page === 'water-history') {
+        loadWaterHistory();
+    } else if (page === 'top-consumers') {
+        displayTopConsumers();
     }
 
     document.querySelector('.page-content').scrollTo({ top: 0, behavior: 'smooth' });
@@ -1057,6 +1068,119 @@ function showReports() {
     const paid  = tenants.filter(t=>t.paymentStatus==='paid').length;
     const rate  = tenants.length > 0 ? ((paid/tenants.length)*100).toFixed(0) : 0;
     showAlert(`Report: ${tenants.length} tenants | KES ${total.toLocaleString()} expected | ${rate}% paid`, 'info');
+}
+
+// === WATER METER VIEWS ===
+function displayWaterReadings() {
+    const tbody = document.getElementById('waterReadingsBody');
+    const subtitle = document.getElementById('waterReadingsSubtitle');
+    if (!tbody) return;
+
+    subtitle.textContent = `${tenants.length} unit${tenants.length !== 1 ? 's' : ''} tracked`;
+
+    if (!tenants.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="empty-cell"><div class="empty-state">
+            <h3>No readings yet</h3><p>Add tenants to track water usage</p>
+        </div></td></tr>`;
+        return;
+    }
+
+    const sorted = [...tenants].sort((a, b) => b.unitsConsumed - a.unitsConsumed);
+    tbody.innerHTML = sorted.map(t => `
+        <tr>
+            <td><div class="tenant-name">${t.tenantName}</div></td>
+            <td><span class="unit-badge">${t.unitNumber}</span></td>
+            <td class="num">${t.previousReading.toFixed(1)}</td>
+            <td class="num">${t.currentReading.toFixed(1)}</td>
+            <td class="num" style="color:var(--blue);font-weight:600">${t.unitsConsumed.toFixed(1)}</td>
+            <td class="num">${fmtKes(t.ratePerUnit)}</td>
+            <td class="num cur">${fmtKes(t.waterBill)}</td>
+        </tr>`).join('');
+}
+
+async function loadWaterHistory() {
+    const tbody = document.getElementById('waterHistoryBody');
+    const subtitle = document.getElementById('waterHistorySubtitle');
+    if (!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-cell"><div class="empty-state"><p>Loading history...</p></div></td></tr>`;
+
+    try {
+        const rows = await api('/water-history');
+        subtitle.textContent = `${rows.length} archived reading${rows.length !== 1 ? 's' : ''}`;
+
+        if (!rows.length) {
+            tbody.innerHTML = `<tr><td colspan="8" class="empty-cell"><div class="empty-state">
+                <h3>No history yet</h3><p>Archive current readings to build history</p>
+            </div></td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = rows.map(r => `
+            <tr>
+                <td style="font-size:0.8125rem">${new Date(r.reading_date).toLocaleDateString('en-GB')}</td>
+                <td><div class="tenant-name">${r.tenant_name}</div></td>
+                <td><span class="unit-badge">${r.unit_number}</span></td>
+                <td class="num">${parseFloat(r.previous_reading).toFixed(1)}</td>
+                <td class="num">${parseFloat(r.current_reading).toFixed(1)}</td>
+                <td class="num" style="color:var(--blue);font-weight:600">${parseFloat(r.units_consumed).toFixed(1)}</td>
+                <td class="num">${fmtKes(parseFloat(r.rate_per_unit))}</td>
+                <td class="num cur">${fmtKes(parseFloat(r.water_bill))}</td>
+            </tr>`).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-cell"><div class="empty-state">
+            <h3>Could not load history</h3><p>${e.message}</p>
+        </div></td></tr>`;
+        subtitle.textContent = 'Error loading';
+    }
+}
+
+function displayTopConsumers() {
+    const tbody = document.getElementById('topConsumersBody');
+    const subtitle = document.getElementById('topConsumersSubtitle');
+    if (!tbody) return;
+
+    const totalUnits = tenants.reduce((s, t) => s + t.unitsConsumed, 0);
+
+    if (!tenants.length) {
+        subtitle.textContent = 'No data';
+        tbody.innerHTML = `<tr><td colspan="6" class="empty-cell"><div class="empty-state">
+            <h3>No consumers yet</h3><p>Add tenants to see rankings</p>
+        </div></td></tr>`;
+        return;
+    }
+
+    const sorted = [...tenants].sort((a, b) => b.unitsConsumed - a.unitsConsumed);
+    subtitle.textContent = `${totalUnits.toFixed(0)} units consumed total`;
+
+    tbody.innerHTML = sorted.map((t, i) => {
+        const pct = totalUnits > 0 ? ((t.unitsConsumed / totalUnits) * 100).toFixed(1) : '0.0';
+        const rankStyle = i < 3 ? 'color:var(--amber);font-weight:700' : '';
+        return `
+            <tr>
+                <td class="num" style="${rankStyle}">#${i + 1}</td>
+                <td><div class="tenant-name">${t.tenantName}</div></td>
+                <td><span class="unit-badge">${t.unitNumber}</span></td>
+                <td class="num" style="color:var(--blue);font-weight:600">${t.unitsConsumed.toFixed(1)}</td>
+                <td class="num cur">${fmtKes(t.waterBill)}</td>
+                <td class="num">${pct}%</td>
+            </tr>`;
+    }).join('');
+}
+
+async function archiveWaterReadings() {
+    if (!tenants.length) { showAlert('No tenants to archive.', 'warning'); return; }
+    if (!confirm('Archive current readings for all tenants?')) return;
+    showLoading('Archiving readings...');
+    try {
+        const result = await api('/water-history', { method: 'POST' });
+        showAlert(`Archived ${result.archived} reading(s)!`, 'success');
+        addNotification(`Water readings archived for ${result.archived} unit(s)`, 'info');
+    } catch (e) {
+        showAlert('Archive failed: ' + e.message, 'error');
+    } finally {
+        hideLoading();
+    }
 }
 
 // === SETTINGS MODAL ===

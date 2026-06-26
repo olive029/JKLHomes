@@ -1,0 +1,18 @@
+{
+  "name": "propflow",
+  "version": "1.0.0",
+  "description": "PropFlow Property Management Suite",
+  "main": "js/server.js",
+  "scripts": {
+    "start": "node js/server.js",
+    "dev": "node js/server.js",
+    "db:setup": "mysql -u root -p < database/schema.sql && mysql -u root -p < database/migration-reminders.sql"
+  },
+  "dependencies": {
+    "africastalking": "^0.6.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "mysql2": "^3.11.0"
+  }
+}

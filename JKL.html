@@ -505,6 +505,114 @@
                     </div>
                 </div>
             </div>
+
+            <!-- ===== WATER READINGS VIEW ===== -->
+            <div class="view" id="view-water-readings">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">Water Readings</h1>
+                        <p class="page-subtitle">Current meter readings for all units.</p>
+                    </div>
+                    <div class="page-actions">
+                        <button class="btn btn-outline" onclick="archiveWaterReadings()">
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 1v8M4 6l3 3 3-3M1 11h12v2H1z"/></svg>
+                            Archive Readings
+                        </button>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <div class="section-card-header">
+                        <div>
+                            <h2 class="section-title">Current Readings</h2>
+                            <p class="section-subtitle" id="waterReadingsSubtitle">0 units tracked</p>
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Tenant</th>
+                                    <th>Unit</th>
+                                    <th class="num">Prev Reading</th>
+                                    <th class="num">Curr Reading</th>
+                                    <th class="num">Units</th>
+                                    <th class="num">Rate/Unit</th>
+                                    <th class="num">Water Bill</th>
+                                </tr>
+                            </thead>
+                            <tbody id="waterReadingsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== WATER HISTORY VIEW ===== -->
+            <div class="view" id="view-water-history">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">Water History</h1>
+                        <p class="page-subtitle">Archived meter readings over time.</p>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <div class="section-card-header">
+                        <div>
+                            <h2 class="section-title">Reading History</h2>
+                            <p class="section-subtitle" id="waterHistorySubtitle">Loading...</p>
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Tenant</th>
+                                    <th>Unit</th>
+                                    <th class="num">Prev</th>
+                                    <th class="num">Curr</th>
+                                    <th class="num">Units</th>
+                                    <th class="num">Rate</th>
+                                    <th class="num">Bill</th>
+                                </tr>
+                            </thead>
+                            <tbody id="waterHistoryBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== TOP CONSUMERS VIEW ===== -->
+            <div class="view" id="view-top-consumers">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">Top Consumers</h1>
+                        <p class="page-subtitle">Units ranked by water consumption.</p>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <div class="section-card-header">
+                        <div>
+                            <h2 class="section-title">Consumption Ranking</h2>
+                            <p class="section-subtitle" id="topConsumersSubtitle">Highest usage first</p>
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Tenant</th>
+                                    <th>Unit</th>
+                                    <th class="num">Units Consumed</th>
+                                    <th class="num">Water Bill</th>
+                                    <th class="num">% of Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topConsumersBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -747,6 +855,6 @@
         </div>
     </div>
 
-    <script src="jkl.js"></script>
+    <script src="js/jkl.js"></script>
 </body>
 </html>
