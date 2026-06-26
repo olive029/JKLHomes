@@ -1,11 +1,13 @@
 // =============================================
 //  PropFlow — Express + MySQL2 Backend Server
 // =============================================
-require('dotenv').config();
-const express       = require('express');
-const cors          = require('cors');
-const mysql         = require('mysql2/promise');
-const AfricasTalking = require('africastalking');
+import dotenv from 'dotenv';
+import express from 'express';
+import cors from 'cors';
+import mysql from 'mysql2/promise';
+import AfricasTalking from 'africastalking';
+
+dotenv.config();
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -674,8 +676,4 @@ app.get('/api/reminders/upcoming', async (req, res) => {
 
 // ── Health check ─────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date() }));
-
-// ── Start ────────────────────────────────────
-app.listen(PORT, () =>
-  console.log(`🚀  PropFlow API running at http://localhost:${PORT}`)
-);
+export default app;
