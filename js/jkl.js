@@ -4,7 +4,7 @@
    ============================================= */
 
 // === CONFIG ===
-const API_BASE = 'http://localhost:3002/api';
+const API_BASE = 'http://localhost:4000/api';
 
 // === GLOBAL STATE ===
 let tenants         = [];
