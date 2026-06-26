@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PropFlow — Property Management</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <link rel="stylesheet" href="css/jkl.css">
+</head>
+<body>
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-logo">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <rect width="28" height="28" rx="8" fill="url(#brandGrad)"/>
+                    <path d="M14 6L20 10V18L14 22L8 18V10L14 6Z" stroke="white" stroke-width="1.5" fill="none"/>
+                    <circle cx="14" cy="14" r="2" fill="white"/>
+                    <defs>
+                        <linearGradient id="brandGrad" x1="0" y1="0" x2="28" y2="28">
+                            <stop offset="0%" stop-color="#6366f1"/>
+                            <stop offset="100%" stop-color="#0ea5e9"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+            </div>
+            <div class="brand-text">
+                <span class="brand-name">PropFlow</span>
+                <span class="brand-tagline">Management Suite</span>
+            </div>
+            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" onclick="toggleSidebar()">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M10 4L6 8L10 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <nav class="sidebar-nav">
+            <!-- Dashboard -->
+            <div class="nav-section-label">Main</div>
+            <a class="nav-item active" href="#" onclick="navigateTo('dashboard', this)">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                        <rect x="2" y="2" width="6" height="6" rx="1.5"/>
+                        <rect x="10" y="2" width="6" height="6" rx="1.5"/>
+                        <rect x="2" y="10" width="6" height="6" rx="1.5"/>
+                        <rect x="10" y="10" width="6" height="6" rx="1.5"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Dashboard</span>
+            </a>
+
+            <!-- Tenants Dropdown -->
+            <div class="nav-dropdown" id="dropdownTenants">
+                <button class="nav-item has-dropdown" onclick="toggleDropdown('dropdownTenants')">
+                    <span class="nav-icon">
+                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                            <circle cx="9" cy="6" r="3"/>
+                            <path d="M2 16c0-3.866 3.134-7 7-7s7 3.134 7 7"/>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Tenants</span>
+                    <svg class="dropdown-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M3 5l4 4 4-4"/>
+                    </svg>
+                </button>
+                <div class="dropdown-menu">
+                    <a class="dropdown-item" href="#" onclick="navigateTo('all-tenants', this); setParentActive('dropdownTenants')">
+                        <span class="dropdown-dot"></span>All Tenants
+                    </a>
+                    <a class="dropdown-item" href="#" onclick="showAddTenantModal(); setParentActive('dropdownTenants')">
+                        <span class="dropdown-dot"></span>Add Tenant
+                    </a>
+                    <a class="dropdown-item" href="#" onclick="showImportModal(); setParentActive('dropdownTenants')">
+                        <span class="dropdown-dot"></span>Import from Excel
+                    </a>
+                </div>
+            </div>
+
+            <!-- Payments Dropdown -->
+            <div class="nav-dropdown" id="dropdownPayments">
+                <button class="nav-item has-dropdown" onclick="toggleDropdown('dropdownPayments')">
+                    <span class="nav-icon">
+                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                            <rect x="2" y="5" width="14" height="10" rx="2"/>
+                            <path d="M2 9h14M6 13h2"/>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Payments</span>
+                    <svg class="dropdown-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M3 5l4 4 4-4"/>
+                    </svg>
+                </button>
+                <div class="dropdown-menu">
+                    <a class="dropdown-item" href="#" onclick="showPaymentTracker(); setParentActive('dropdownPayments')">
+                        <span class="dropdown-dot"></span>Payment Tracker
+                    </a>
+                    <a class="dropdown-item" href="#" onclick="navigateTo('overdue', this); setParentActive('dropdownPayments')">
+                        <span class="dropdown-dot"></span>Overdue
+                        <span class="dropdown-badge" id="overdueBadge">0</span>
+                    </a>
+                    <a class="dropdown-item" href="#" onclick="markAllPaidPrompt(); setParentActive('dropdownPayments')">
+                        <span class="dropdown-dot"></span>Mark All Paid
+                    </a>
+                </div>
+            </div>
+
+            <!-- Invoices Dropdown -->
+            <div class="nav-dropdown" id="dropdownInvoices">
+                <button class="nav-item has-dropdown" onclick="toggleDropdown('dropdownInvoices')">
+                    <span class="nav-icon">
+                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                            <path d="M4 2h10v14H4zM7 6h4M7 9h4M7 12h2"/>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Invoices</span>
+                    <svg class="dropdown-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M3 5l4 4 4-4"/>
+                    </svg>
+                </button>
+                <div class="dropdown-menu">
+                    <a class="dropdown-item" href="#" onclick="printAllInvoices(); setParentActive('dropdownInvoices')">
+                        <span class="dropdown-dot"></span>Print All
+                    </a>
+                    <a class="dropdown-item" href="#" onclick="printSelectedInvoicesPrompt(); setParentActive('dropdownInvoices')">
+                        <span class="dropdown-dot"></span>Print Selected
+                    </a>
+                    <a class="dropdown-item" href="#" onclick="exportToExcel(); setParentActive('dropdownInvoices')">
+                        <span class="dropdown-dot"></span>Export Excel
+                    </a>
+                </div>
+            </div>
+
+            <div class="nav-divider"></div>
+            <div class="nav-section-label">Reports</div>
+
+            <!-- Analytics -->
+            <a class="nav-item" href="#" onclick="showAnalytics(); navigateTo('analytics', this)">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                        <path d="M2 16h14M4 16V10M8 16V6M12 16V2M16 16V8"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Analytics</span>
+            </a>
+
+            <!-- Reports -->
+            <a class="nav-item" href="#" onclick="showReports()">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                        <rect x="2" y="2" width="14" height="14" rx="2"/>
+                        <path d="M5 7h8M5 10h8M5 13h5"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Reports</span>
+            </a>
+            <a class="nav-item" href="#" onclick="showRemindersModal()">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                        <path d="M9 2a5 5 0 00-5 5c0 5.25-2 6.5-2 6.5h14s-2-1.25-2-6.5a5 5 0 00-5-5z"/>
+                        <path d="M10.5 15a1.5 1.5 0 01-3 0"/>
+                        <circle cx="15" cy="4" r="3" fill="#f59e0b" stroke="none"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Reminders</span>
+            </a>
+
+            <!-- Water Meter -->
+            <div class="nav-dropdown" id="dropdownWater">
+                <button class="nav-item has-dropdown" onclick="toggleDropdown('dropdownWater')">
+                    <span class="nav-icon">
+                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                            <path d="M9 2C9 2 3 8 3 12a6 6 0 0012 0C15 8 9 2 9 2z"/>
+                        </svg>
+                    </span>
+                    <span class="nav-label">Water Meter</span>
+                    <svg class="dropdown-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M3 5l4 4 4-4"/>
+                    </svg>
+                </button>
+                <div class="dropdown-menu">
+                    <a class="dropdown-item" href="#" onclick="navigateTo('water-readings', this); setParentActive('dropdownWater')">
+                        <span class="dropdown-dot"></span>Current Readings
+                    </a>
+                    <a class="dropdown-item" href="#" onclick="navigateTo('water-history', this); setParentActive('dropdownWater')">
+                        <span class="dropdown-dot"></span>History
+                    </a>
+                    <a class="dropdown-item" href="#" onclick="navigateTo('top-consumers', this); setParentActive('dropdownWater')">
+                        <span class="dropdown-dot"></span>Top Consumers
+                    </a>
+                </div>
+            </div>
+
+            <div class="nav-divider"></div>
+            <div class="nav-section-label">System</div>
+
+            <a class="nav-item" href="#" onclick="showSettingsModal()">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                        <circle cx="9" cy="9" r="2.5"/>
+                        <path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.5 3.5l1.5 1.5M13 13l1.5 1.5M3.5 14.5l1.5-1.5M13 5l1.5-1.5"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Settings</span>
+            </a>
+        </nav>
+
+        <!-- Sidebar Footer -->
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="user-avatar">PM</div>
+                <div class="user-info">
+                    <span class="user-name">Property Admin</span>
+                    <span class="user-role">Administrator</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ===== MAIN WRAPPER ===== -->
+    <div class="main-wrapper" id="mainWrapper">
+
+        <!-- ===== TOP NAVBAR ===== -->
+        <header class="topnav" id="topnav">
+            <div class="topnav-left">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M3 6h14M3 10h14M3 14h14"/>
+                    </svg>
+                </button>
+
+                <!-- Breadcrumbs -->
+                <nav class="breadcrumbs" id="breadcrumbs" aria-label="Breadcrumb">
+                    <a class="bc-item bc-home" href="#" onclick="navigateTo('dashboard', null)">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                            <path d="M2 7L7 2l5 5M3 6.5V12h3V9h2v3h3V6.5"/>
+                        </svg>
+                    </a>
+                    <span class="bc-sep">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                            <path d="M4 2l4 4-4 4"/>
+                        </svg>
+                    </span>
+                    <span class="bc-item bc-current" id="bcCurrent">Dashboard</span>
+                </nav>
+            </div>
+
+            <div class="topnav-right">
+                <!-- Search -->
+                <div class="topnav-search">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                        <circle cx="7" cy="7" r="4.5"/>
+                        <path d="M12 12l2 2"/>
+                    </svg>
+                    <input type="text" placeholder="Search tenants..." id="globalSearch" onkeyup="handleGlobalSearch()">
+                    <kbd>⌘K</kbd>
+                </div>
+
+                <!-- Notification Bell -->
+                <div class="topnav-icon-btn" onclick="toggleNotifications()" id="notifBtn">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                        <path d="M9 2a5 5 0 00-5 5c0 5.25-2 6.5-2 6.5h14s-2-1.25-2-6.5a5 5 0 00-5-5z"/>
+                        <path d="M10.5 15a1.5 1.5 0 01-3 0"/>
+                    </svg>
+                    <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+                </div>
+
+                <!-- Theme Toggle -->
+                <button class="topnav-icon-btn" onclick="toggleTheme()" id="themeBtn">
+                    <svg class="icon-sun" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                        <circle cx="9" cy="9" r="3"/>
+                        <path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M4 4l1.5 1.5M12.5 12.5L14 14M4 14l1.5-1.5M12.5 5.5L14 4"/>
+                    </svg>
+                    <svg class="icon-moon" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+                        <path d="M15 9.5A6 6 0 118.5 3a8 8 0 006.5 6.5z"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Notification Panel -->
+        <div class="notif-panel" id="notifPanel">
+            <div class="notif-panel-header">
+                <h3>Notifications</h3>
+                <button class="btn-close-notif" onclick="toggleNotifications()">✕</button>
+            </div>
+            <div class="notif-list" id="notifList"></div>
+        </div>
+
+        <!-- ===== PAGE CONTENT ===== -->
+        <main class="page-content" id="pageContent">
+
+            <!-- Alert Box -->
+            <div id="alertBox" class="alert-toast"></div>
+
+            <!-- Loading Overlay -->
+            <div class="loading-overlay" id="loadingOverlay">
+                <div class="loader-ring"></div>
+                <p>Processing...</p>
+            </div>
+
+            <!-- ===== DASHBOARD VIEW ===== -->
+            <div class="view active" id="view-dashboard">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">Overview</h1>
+                        <p class="page-subtitle">Welcome back — here's what's happening today.</p>
+                    </div>
+                    <div class="page-actions">
+                        <button class="btn btn-outline" onclick="exportToExcel()">
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 1v8M4 6l3 3 3-3M1 11h12v2H1z"/></svg>
+                            Export
+                        </button>
+                        <button class="btn btn-primary" onclick="showAddTenantModal()">
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+                            Add Tenant
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card stat-blue">
+                        <div class="stat-icon-wrap">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="10" cy="7" r="3.5"/><path d="M3 19c0-3.866 3.134-7 7-7s7 3.134 7 7"/></svg>
+                        </div>
+                        <div class="stat-body">
+                            <div class="stat-label">Total Tenants</div>
+                            <div class="stat-value" id="totalTenants">0</div>
+                            <div class="stat-sub" id="paidPercentage">0% payment rate</div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-green">
+                        <div class="stat-icon-wrap">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><rect x="2" y="6" width="16" height="12" rx="2"/><path d="M2 11h16M6 15h3"/></svg>
+                        </div>
+                        <div class="stat-body">
+                            <div class="stat-label">Monthly Revenue</div>
+                            <div class="stat-value" id="totalRevenue">KES 0</div>
+                            <div class="stat-sub positive">Total expected</div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-cyan">
+                        <div class="stat-icon-wrap">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M10 3C10 3 4 9 4 13a6 6 0 0012 0C16 9 10 3 10 3z"/></svg>
+                        </div>
+                        <div class="stat-body">
+                            <div class="stat-label">Water Bills</div>
+                            <div class="stat-value" id="totalWater">KES 0</div>
+                            <div class="stat-sub" id="waterChange">0 units total</div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-amber">
+                        <div class="stat-icon-wrap">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 3"/></svg>
+                        </div>
+                        <div class="stat-body">
+                            <div class="stat-label">Pending Payments</div>
+                            <div class="stat-value" id="pendingPayments">KES 0</div>
+                            <div class="stat-sub negative" id="overdueCount">0 overdue</div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-violet">
+                        <div class="stat-icon-wrap">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M2 18l4-8 4 6 3-4 5 6"/></svg>
+                        </div>
+                        <div class="stat-body">
+                            <div class="stat-label">Avg Rent</div>
+                            <div class="stat-value" id="avgRent">KES 0</div>
+                            <div class="stat-sub">per unit</div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-rose">
+                        <div class="stat-icon-wrap">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M10 2l2.4 7.4H20l-6.2 4.5 2.4 7.4L10 17l-6.2 4.3 2.4-7.4L0 9.4h7.6z"/></svg>
+                        </div>
+                        <div class="stat-body">
+                            <div class="stat-label">Paid Tenants</div>
+                            <div class="stat-value" id="paidTenants">0</div>
+                            <div class="stat-sub positive">Up to date</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions Row -->
+                <div class="quick-row">
+                    <div class="quick-row-title">Quick Actions</div>
+                    <div class="quick-actions-strip">
+                        <button class="quick-action-btn" onclick="showAddTenantModal()">
+                            <div class="qa-icon qa-blue">
+                                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="6" r="3"/><path d="M2 16c0-3.866 3.134-7 7-7s7 3.134 7 7"/></svg>
+                            </div>
+                            <span>Add Tenant</span>
+                        </button>
+                        <button class="quick-action-btn" onclick="showImportModal()">
+                            <div class="qa-icon qa-green">
+                                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M9 2v10M5 8l4 4 4-4M2 14h14v2H2z"/></svg>
+                            </div>
+                            <span>Import Excel</span>
+                        </button>
+                        <button class="quick-action-btn" onclick="printAllInvoices()">
+                            <div class="qa-icon qa-amber">
+                                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M5 6V3h8v3M5 14H3V8h12v6h-2M5 11h8v5H5z"/></svg>
+                            </div>
+                            <span>Print All</span>
+                        </button>
+                        <button class="quick-action-btn" onclick="showPaymentTracker()">
+                            <div class="qa-icon qa-violet">
+                                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><rect x="2" y="5" width="14" height="10" rx="2"/><path d="M2 9h14"/></svg>
+                            </div>
+                            <span>Payments</span>
+                        </button>
+                        <button class="quick-action-btn" onclick="showAnalytics(); navigateTo('analytics', null)">
+                            <div class="qa-icon qa-cyan">
+                                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M2 16h14M4 16V10M8 16V6M12 16V2M16 16V8"/></svg>
+                            </div>
+                            <span>Analytics</span>
+                        </button>
+                        <button class="quick-action-btn" onclick="showSettingsModal()">
+                            <div class="qa-icon qa-rose">
+                                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="9" r="2.5"/><path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.5 3.5l1.5 1.5M13 13l1.5 1.5M3.5 14.5l1.5-1.5M13 5l1.5-1.5"/></svg>
+                            </div>
+                            <span>Settings</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tenants Table Section -->
+                <div class="section-card">
+                    <div class="section-card-header">
+                        <div>
+                            <h2 class="section-title">All Tenants</h2>
+                            <p class="section-subtitle" id="tableSubtitle">0 tenants registered</p>
+                        </div>
+                        <div class="table-controls">
+                            <div class="search-wrap">
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="6" cy="6" r="4"/><path d="M10 10l2.5 2.5"/></svg>
+                                <input type="text" id="searchInput" placeholder="Search by name or unit..." onkeyup="searchTenants()">
+                            </div>
+                            <select id="filterStatus" class="ctrl-select" onchange="filterTenants()">
+                                <option value="all">All Status</option>
+                                <option value="paid">Paid</option>
+                                <option value="pending">Pending</option>
+                                <option value="overdue">Overdue</option>
+                            </select>
+                            <select id="sortBy" class="ctrl-select" onchange="sortTenants()">
+                                <option value="name">Name A–Z</option>
+                                <option value="unit">Unit No.</option>
+                                <option value="rent-high">Rent ↓</option>
+                                <option value="rent-low">Rent ↑</option>
+                                <option value="water-high">Water ↓</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                                    <th>Tenant</th>
+                                    <th>Unit</th>
+                                    <th>Status</th>
+                                    <th class="num">Prev Reading</th>
+                                    <th class="num">Curr Reading</th>
+                                    <th class="num">Units</th>
+                                    <th class="num">Water Bill</th>
+                                    <th class="num">Base Rent</th>
+                                    <th class="num">Other</th>
+                                    <th class="num">Total</th>
+                                    <th class="center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody">
+                                <tr>
+                                    <td colspan="12" class="empty-cell">
+                                        <div class="empty-state">
+                                            <div class="empty-icon">
+                                                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="8" y="6" width="32" height="36" rx="3"/><path d="M16 16h16M16 22h16M16 28h10"/></svg>
+                                            </div>
+                                            <h3>No tenants yet</h3>
+                                            <p>Click "Add Tenant" to get started</p>
+                                            <button class="btn btn-primary" onclick="showAddTenantModal()">Add First Tenant</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Bulk Actions Bar -->
+                    <div id="bulkActionsBar" class="bulk-bar" style="display:none">
+                        <span id="selectedCount">0 selected</span>
+                        <div class="bulk-actions">
+                            <button class="btn btn-success btn-sm" onclick="markSelectedAsPaid()">✅ Mark Paid</button>
+                            <button class="btn btn-info btn-sm" onclick="sendBulkReminders()">� SMS Remind</button>
+                            <button class="btn btn-warning btn-sm" onclick="printSelectedInvoices()">🖨 Print</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteSelected()">🗑 Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ===== MODALS ===== -->
+
+    <!-- Add/Edit Tenant Modal -->
+    <div id="tenantModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-hdr">
+                <h2 id="modalTitle">Add New Tenant</h2>
+                <button class="modal-close" onclick="closeTenantModal()">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l10 10M14 4L4 14"/></svg>
+                </button>
+            </div>
+            <div class="modal-bdy">
+                <form id="tenantForm">
+                    <input type="hidden" id="tenantId">
+
+                    <div class="form-section">
+                        <div class="form-section-title">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.314 2.686-6 6-6s6 2.686 6 6"/></svg>
+                            Basic Information
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group"><label>Tenant Name <span class="req">*</span></label><input type="text" id="tenantName" required></div>
+                            <div class="form-group"><label>Unit Number <span class="req">*</span></label><input type="text" id="unitNumber" required></div>
+                            <div class="form-group"><label>Email Address</label><input type="email" id="tenantEmail"></div>
+                            <div class="form-group"><label>Phone Number</label><input type="tel" id="tenantPhone"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="form-section-title">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M8 2C8 2 3 7 3 10a5 5 0 0010 0C13 7 8 2 8 2z"/></svg>
+                            Water Meter
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group"><label>Previous Reading <span class="req">*</span></label><input type="number" id="previousReading" step="0.1" required onchange="calculateWaterBill()"></div>
+                            <div class="form-group"><label>Current Reading <span class="req">*</span></label><input type="number" id="currentReading" step="0.1" required onchange="calculateWaterBill()"></div>
+                            <div class="form-group"><label>Rate Per Unit (KES) <span class="req">*</span></label><input type="number" id="ratePerUnit" step="0.01" required onchange="calculateWaterBill()"></div>
+                            <div class="form-group"><label>Units Consumed</label><input type="number" id="unitsConsumed" step="0.1" readonly disabled></div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="form-section-title">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><rect x="2" y="5" width="12" height="9" rx="1.5"/><path d="M2 9h12M5 12h2"/></svg>
+                            Rent & Payment
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group"><label>Base Rent (KES) <span class="req">*</span></label><input type="number" id="baseRent" step="0.01" required onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Payment Status</label>
+                                <select id="paymentStatus">
+                                    <option value="pending">Pending</option>
+                                    <option value="paid">Paid</option>
+                                    <option value="overdue">Overdue</option>
+                                </select>
+                            </div>
+                            <div class="form-group"><label>Due Date</label><input type="date" id="dueDate"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="form-section-title">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M2 2h12v12H2zM5 6h6M5 9h6M5 12h3"/></svg>
+                            Other Charges (Optional)
+                        </div>
+                        <div class="form-grid form-grid-3">
+                            <div class="form-group"><label>Electricity</label><input type="number" id="electricity" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Tokens</label><input type="number" id="tokens" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Security + Pump</label><input type="number" id="securityPump" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Caretaker + WiFi</label><input type="number" id="caretakerWifi" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>WiFi & CCTV</label><input type="number" id="wifiCCTV" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Security</label><input type="number" id="security" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Rujuwasco</label><input type="number" id="rujuwasco" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Care Taker</label><input type="number" id="careTaker" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Repair Works</label><input type="number" id="repairWorks" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Bio Digester</label><input type="number" id="bioDigester" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Repainting</label><input type="number" id="repainting" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>WiFi</label><input type="number" id="wifi" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>House Refunds</label><input type="number" id="houseRefunds" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Garbage</label><input type="number" id="garbage" step="0.01" value="0" onchange="calculateTotal()"></div>
+                            <div class="form-group"><label>Other</label><input type="number" id="otherCharges" step="0.01" value="0" onchange="calculateTotal()"></div>
+                        </div>
+                    </div>
+
+                    <!-- Total Preview -->
+                    <div class="total-preview">
+                        <div class="total-preview-title">Rent Summary</div>
+                        <div class="total-preview-rows">
+                            <div class="total-row"><span>Base Rent</span><span id="previewBaseRent">KES 0.00</span></div>
+                            <div class="total-row"><span>Water Bill</span><span id="previewWaterBill">KES 0.00</span></div>
+                            <div class="total-row"><span>Other Charges</span><span id="previewOtherCharges">KES 0.00</span></div>
+                            <div class="total-row grand"><span>Total Due</span><span id="previewTotal">KES 0.00</span></div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-ftr">
+                <button class="btn btn-outline" onclick="closeTenantModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveTenant()">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 7l4 4 6-6"/></svg>
+                    Save Tenant
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="importModal" class="modal-overlay">
+        <div class="modal-box modal-sm">
+            <div class="modal-hdr">
+                <h2>Import from Excel</h2>
+                <button class="modal-close" onclick="closeImportModal()">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l10 10M14 4L4 14"/></svg>
+                </button>
+            </div>
+            <div class="modal-bdy">
+                <div class="import-zone">
+                    <div class="import-zone-icon">
+                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M24 8v24M14 22l10 10 10-10M8 38h32"/></svg>
+                    </div>
+                    <p class="import-title">Drop your Excel file here</p>
+                    <p class="import-sub">or click to browse</p>
+                    <label class="btn btn-primary" style="margin-top:1rem">
+                        Choose File
+                        <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFileUpload(event)" style="display:none">
+                    </label>
+                    <p class="import-template"><a href="#" onclick="downloadTemplate(); return false;">Download template →</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Invoice Modal -->
+    <div id="invoiceModal" class="modal-overlay">
+        <div class="modal-box modal-lg">
+            <div class="modal-hdr">
+                <h2>Invoice Preview</h2>
+                <button class="modal-close" onclick="closeInvoiceModal()">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l10 10M14 4L4 14"/></svg>
+                </button>
+            </div>
+            <div class="modal-bdy">
+                <div id="invoiceContent"></div>
+            </div>
+            <div class="modal-ftr">
+                <button class="btn btn-outline" onclick="closeInvoiceModal()">Close</button>
+                <button class="btn btn-primary" onclick="printInvoice()">🖨 Print</button>
+                <button class="btn btn-success" onclick="downloadInvoicePDF()">📄 Download PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-hdr">
+                <h2>Settings</h2>
+                <button class="modal-close" onclick="closeSettingsModal()">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l10 10M14 4L4 14"/></svg>
+                </button>
+            </div>
+            <div class="modal-bdy">
+                <div class="form-section">
+                    <div class="form-section-title">🏢 Company Information</div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>Company Name</label><input type="text" id="companyName"></div>
+                        <div class="form-group"><label>Address</label><input type="text" id="companyAddress"></div>
+                        <div class="form-group"><label>Phone</label><input type="tel" id="companyPhone"></div>
+                        <div class="form-group"><label>Email</label><input type="email" id="companyEmail"></div>
+                    </div>
+                </div>
+                <div class="form-section">
+                    <div class="form-section-title">💳 Payment Information</div>
+                    <div class="form-grid">
+                        <div class="form-group"><label>M-Pesa Number</label><input type="tel" id="mpesaNumber"></div>
+                        <div class="form-group"><label>Bank Account</label><input type="text" id="bankAccount"></div>
+                        <div class="form-group"><label>Bank Name</label><input type="text" id="bankName"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-ftr">
+                <button class="btn btn-outline" onclick="closeSettingsModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analytics Modal -->
+    <div id="analyticsModal" class="modal-overlay">
+        <div class="modal-box modal-xl">
+            <div class="modal-hdr">
+                <h2>Analytics</h2>
+                <button class="modal-close" onclick="closeAnalyticsModal()">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l10 10M14 4L4 14"/></svg>
+                </button>
+            </div>
+            <div class="modal-bdy">
+                <div class="charts-grid">
+                    <div class="chart-card"><h3>Revenue Breakdown</h3><canvas id="revenueChart"></canvas></div>
+                    <div class="chart-card"><h3>Payment Status</h3><canvas id="paymentChart"></canvas></div>
+                    <div class="chart-card"><h3>Water Consumption</h3><canvas id="waterChart"></canvas></div>
+                    <div class="chart-card"><h3>Monthly Trend</h3><canvas id="trendChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Tracker Modal -->
+    <div id="paymentModal" class="modal-overlay">
+        <div class="modal-box modal-lg">
+            <div class="modal-hdr">
+                <h2>Payment Tracker</h2>
+                <button class="modal-close" onclick="closePaymentModal()">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l10 10M14 4L4 14"/></svg>
+                </button>
+            </div>
+            <div class="modal-bdy">
+                <div id="paymentTrackerContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reminders Modal -->
+    <div id="remindersModal" class="modal-overlay">
+        <div class="modal-box modal-lg">
+            <div class="modal-hdr">
+                <h2>📱 SMS Reminders</h2>
+                <button class="modal-close" onclick="closeRemindersModal()">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l10 10M14 4L4 14"/></svg>
+                </button>
+            </div>
+            <div class="modal-bdy">
+                <div id="remindersPreviewContent"></div>
+            </div>
+            <div class="modal-ftr">
+                <button class="btn btn-outline" onclick="closeRemindersModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="jkl.js"></script>
+</body>
+</html>
