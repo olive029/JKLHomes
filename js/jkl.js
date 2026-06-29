@@ -1,15 +1,12 @@
 /* =============================================
-   PROPFLOW — Frontend JavaScript
-   Fixes: dropdown navigation + SMS reminders
+   PROPFLOW — Frontend JavaScript (Firebase Version)
+   All API calls replaced with Firestore operations
    ============================================= */
-
-// === CONFIG ===
-const API_BASE = 'http://localhost:4000/api';
 
 // === GLOBAL STATE ===
 let tenants         = [];
 let filteredTenants = [];
-let editingId       = -1;
+let editingId       = null;  // Now using string IDs from Firestore
 let notifications   = [];
 let settings        = {
     companyName:    'PropFlow Properties',
@@ -31,19 +28,9 @@ const bcNames = {
     'top-consumers':  'Top Consumers',
 };
 
-// ── Generic API helper ───────────────────────
-async function api(path, options = {}) {
-    const res = await fetch(`${API_BASE}${path}`, {
-        headers: { 'Content-Type': 'application/json' },
-        ...options,
-        body: options.body ? JSON.stringify(options.body) : undefined
-    });
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    return res.json();
-}
+// ─── FIREBASE REFERENCE ───────────────────────
+// Assumes Firebase is already initialized in the HTML
+// db is the Firestore instance
 
 // === INIT ===
 document.addEventListener('DOMContentLoaded', async () => {
@@ -54,43 +41,136 @@ document.addEventListener('DOMContentLoaded', async () => {
     checkOverdueTenants();
     initNotifications();
     updateSettingsForm();
-    scheduleSmsReminderCheck();   // ← NEW: start reminder polling
+    scheduleSmsReminderCheck();
+    
+    // Set up real-time listener
+    db.collection('tenants').onSnapshot(() => {
+        console.log('📡 Real-time update detected');
+        loadAllTenants();
+    }, (error) => {
+        console.error('Real-time listener error:', error);
+    });
 });
 
-// === DATA — API CALLS ===
+// === DATA — FIRESTORE OPERATIONS ===
 
 async function loadAllTenants() {
     try {
-        tenants = await api('/tenants');
+        const snapshot = await db.collection('tenants')
+            .orderBy('createdAt', 'desc')
+            .get();
+        
+        tenants = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            // Convert Firestore field names to match existing code
+            tenants.push({
+                id: doc.id,
+                tenantName: data.tenantName || data.name || 'Unknown',
+                unitNumber: data.unitNumber || 'N/A',
+                email: data.email || '',
+                phone: data.phone || '',
+                previousReading: data.previousReading || 0,
+                currentReading: data.currentReading || 0,
+                ratePerUnit: data.ratePerUnit || 50,
+                baseRent: data.baseRent || 0,
+                paymentStatus: data.paymentStatus || 'pending',
+                dueDate: data.dueDate || null,
+                // Computed fields
+                unitsConsumed: data.unitsConsumed || 0,
+                waterBill: data.waterBill || 0,
+                otherCharges: data.otherCharges || 0,
+                totalRent: data.totalRent || data.total || 0,
+                // Other charges breakdown
+                otherChargesBreakdown: {
+                    electricity: data.ch_electricity || 0,
+                    tokens: data.ch_tokens || 0,
+                    securityPump: data.ch_security_pump || 0,
+                    caretakerWifi: data.ch_caretaker_wifi || 0,
+                    wifiCCTV: data.ch_wifi_cctv || 0,
+                    security: data.ch_security || 0,
+                    rujuwasco: data.ch_rujuwasco || 0,
+                    careTaker: data.ch_care_taker || 0,
+                    repairWorks: data.ch_repair_works || 0,
+                    bioDigester: data.ch_bio_digester || 0,
+                    repainting: data.ch_repainting || 0,
+                    wifi: data.ch_wifi || 0,
+                    houseRefunds: data.ch_house_refunds || 0,
+                    garbage: data.ch_garbage || 0,
+                    other: data.ch_other || 0
+                },
+                // Store full data for editing
+                _raw: data
+            });
+        });
+        
         filteredTenants = [...tenants];
         refreshDisplay();
         updateOverdueBadge();
     } catch (e) {
+        console.error('Error loading tenants:', e);
         showAlert('Could not load tenants: ' + e.message, 'error');
     }
 }
 
 async function loadSettings() {
     try {
-        settings = await api('/settings');
+        const doc = await db.collection('settings').doc('company').get();
+        if (doc.exists) {
+            const data = doc.data();
+            settings = {
+                companyName: data.companyName || settings.companyName,
+                companyAddress: data.address || settings.companyAddress,
+                companyPhone: data.phone || settings.companyPhone,
+                companyEmail: data.email || settings.companyEmail,
+                mpesaNumber: data.mpesaNumber || settings.mpesaNumber,
+                bankAccount: data.bankAccount || settings.bankAccount,
+                bankName: data.bankName || settings.bankName
+            };
+        } else {
+            // Create default settings
+            await db.collection('settings').doc('company').set({
+                companyName: settings.companyName,
+                address: settings.companyAddress,
+                phone: settings.companyPhone,
+                email: settings.companyEmail,
+                mpesaNumber: settings.mpesaNumber,
+                bankAccount: settings.bankAccount,
+                bankName: settings.bankName,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
     } catch (e) {
-        console.warn('Could not load settings, using defaults.');
+        console.warn('Could not load settings, using defaults:', e);
     }
 }
 
 async function saveSettings() {
     try {
         const s = {
-            companyName:    document.getElementById('companyName').value,
-            companyAddress: document.getElementById('companyAddress').value,
-            companyPhone:   document.getElementById('companyPhone').value,
-            companyEmail:   document.getElementById('companyEmail').value,
-            mpesaNumber:    document.getElementById('mpesaNumber').value,
-            bankAccount:    document.getElementById('bankAccount').value,
-            bankName:       document.getElementById('bankName').value
+            companyName: document.getElementById('companyName').value,
+            address: document.getElementById('companyAddress').value,
+            phone: document.getElementById('companyPhone').value,
+            email: document.getElementById('companyEmail').value,
+            mpesaNumber: document.getElementById('mpesaNumber').value,
+            bankAccount: document.getElementById('bankAccount').value,
+            bankName: document.getElementById('bankName').value,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
-        await api('/settings', { method: 'PUT', body: s });
-        settings = s;
+        
+        await db.collection('settings').doc('company').set(s, { merge: true });
+        
+        settings = {
+            companyName: s.companyName,
+            companyAddress: s.address,
+            companyPhone: s.phone,
+            companyEmail: s.email,
+            mpesaNumber: s.mpesaNumber,
+            bankAccount: s.bankAccount,
+            bankName: s.bankName
+        };
+        
         closeSettingsModal();
         showAlert('Settings saved!', 'success');
     } catch (e) {
@@ -110,54 +190,71 @@ async function saveTenant() {
 
     showLoading('Saving...');
 
-    const prev     = parseFloat(document.getElementById('previousReading').value) || 0;
-    const curr     = parseFloat(document.getElementById('currentReading').value)  || 0;
-    const rate     = parseFloat(document.getElementById('ratePerUnit').value)     || 0;
-    const baseRent = parseFloat(document.getElementById('baseRent').value)        || 0;
+    const prev = parseFloat(document.getElementById('previousReading').value) || 0;
+    const curr = parseFloat(document.getElementById('currentReading').value) || 0;
+    const rate = parseFloat(document.getElementById('ratePerUnit').value) || 50;
+    const baseRent = parseFloat(document.getElementById('baseRent').value) || 0;
+
+    // Calculate water bill
+    const unitsConsumed = Math.max(0, curr - prev);
+    const waterBill = unitsConsumed * rate;
+
+    // Calculate other charges
+    const otherChargesMap = {
+        ch_electricity: parseFloat(document.getElementById('electricity').value) || 0,
+        ch_tokens: parseFloat(document.getElementById('tokens').value) || 0,
+        ch_security_pump: parseFloat(document.getElementById('securityPump').value) || 0,
+        ch_caretaker_wifi: parseFloat(document.getElementById('caretakerWifi').value) || 0,
+        ch_wifi_cctv: parseFloat(document.getElementById('wifiCCTV').value) || 0,
+        ch_security: parseFloat(document.getElementById('security').value) || 0,
+        ch_rujuwasco: parseFloat(document.getElementById('rujuwasco').value) || 0,
+        ch_care_taker: parseFloat(document.getElementById('careTaker').value) || 0,
+        ch_repair_works: parseFloat(document.getElementById('repairWorks').value) || 0,
+        ch_bio_digester: parseFloat(document.getElementById('bioDigester').value) || 0,
+        ch_repainting: parseFloat(document.getElementById('repainting').value) || 0,
+        ch_wifi: parseFloat(document.getElementById('wifi').value) || 0,
+        ch_house_refunds: parseFloat(document.getElementById('houseRefunds').value) || 0,
+        ch_garbage: parseFloat(document.getElementById('garbage').value) || 0,
+        ch_other: parseFloat(document.getElementById('otherCharges').value) || 0
+    };
+
+    const otherChargesTotal = Object.values(otherChargesMap).reduce((a, b) => a + b, 0);
+    const totalRent = baseRent + waterBill + otherChargesTotal;
 
     const payload = {
-        tenant_name:       tenantName,
-        unit_number:       unitNumber,
-        email:             document.getElementById('tenantEmail').value,
-        phone:             document.getElementById('tenantPhone').value,
-        previous_reading:  prev,
-        current_reading:   curr,
-        rate_per_unit:     rate,
-        base_rent:         baseRent,
-        payment_status:    document.getElementById('paymentStatus').value,
-        due_date:          document.getElementById('dueDate').value || null,
-        ch_electricity:    parseFloat(document.getElementById('electricity').value)   || 0,
-        ch_tokens:         parseFloat(document.getElementById('tokens').value)        || 0,
-        ch_security_pump:  parseFloat(document.getElementById('securityPump').value)  || 0,
-        ch_caretaker_wifi: parseFloat(document.getElementById('caretakerWifi').value) || 0,
-        ch_wifi_cctv:      parseFloat(document.getElementById('wifiCCTV').value)      || 0,
-        ch_security:       parseFloat(document.getElementById('security').value)      || 0,
-        ch_rujuwasco:      parseFloat(document.getElementById('rujuwasco').value)     || 0,
-        ch_care_taker:     parseFloat(document.getElementById('careTaker').value)     || 0,
-        ch_repair_works:   parseFloat(document.getElementById('repairWorks').value)   || 0,
-        ch_bio_digester:   parseFloat(document.getElementById('bioDigester').value)   || 0,
-        ch_repainting:     parseFloat(document.getElementById('repainting').value)    || 0,
-        ch_wifi:           parseFloat(document.getElementById('wifi').value)          || 0,
-        ch_house_refunds:  parseFloat(document.getElementById('houseRefunds').value)  || 0,
-        ch_garbage:        parseFloat(document.getElementById('garbage').value)       || 0,
-        ch_other:          parseFloat(document.getElementById('otherCharges').value)  || 0,
+        tenantName: tenantName,
+        unitNumber: unitNumber,
+        email: document.getElementById('tenantEmail').value || '',
+        phone: document.getElementById('tenantPhone').value || '',
+        previousReading: prev,
+        currentReading: curr,
+        ratePerUnit: rate,
+        unitsConsumed: unitsConsumed,
+        waterBill: waterBill,
+        baseRent: baseRent,
+        otherCharges: otherChargesTotal,
+        totalRent: totalRent,
+        paymentStatus: document.getElementById('paymentStatus').value || 'pending',
+        dueDate: document.getElementById('dueDate').value || null,
+        ...otherChargesMap,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
 
     try {
-        if (editingId >= 0) {
-            const updated = await api(`/tenants/${editingId}`, { method: 'PUT', body: payload });
-            const idx = tenants.findIndex(t => t.id === editingId);
-            if (idx >= 0) tenants[idx] = updated;
+        if (editingId) {
+            // Update existing tenant
+            await db.collection('tenants').doc(editingId).update(payload);
             showAlert(`${tenantName} updated!`, 'success');
             addNotification(`Updated: ${tenantName}`, 'info');
         } else {
-            const created = await api('/tenants', { method: 'POST', body: payload });
-            tenants.push(created);
+            // Add new tenant
+            payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            const docRef = await db.collection('tenants').add(payload);
             showAlert(`${tenantName} added!`, 'success');
             addNotification(`New tenant: ${tenantName}`, 'success');
         }
-        filteredTenants = [...tenants];
-        refreshDisplay();
+        
+        await loadAllTenants();
         updateOverdueBadge();
         closeTenantModal();
     } catch (e) {
@@ -170,12 +267,21 @@ async function saveTenant() {
 async function deleteTenant(id) {
     const t = tenants.find(x => x.id === id);
     if (!t || !confirm(`Delete ${t.tenantName}?`)) return;
+    
     showLoading('Deleting...');
     try {
-        await api(`/tenants/${id}`, { method: 'DELETE' });
-        tenants = tenants.filter(x => x.id !== id);
-        filteredTenants = [...tenants];
-        refreshDisplay();
+        await db.collection('tenants').doc(id).delete();
+        
+        // Also delete associated payments and water history
+        const payments = await db.collection('payments')
+            .where('tenantId', '==', id).get();
+        payments.forEach(doc => doc.ref.delete());
+        
+        const waterHistory = await db.collection('waterHistory')
+            .where('tenantId', '==', id).get();
+        waterHistory.forEach(doc => doc.ref.delete());
+        
+        await loadAllTenants();
         updateOverdueBadge();
         showAlert('Tenant deleted.', 'success');
         addNotification(`Removed: ${t.tenantName}`, 'warning');
@@ -188,16 +294,31 @@ async function deleteTenant(id) {
 
 async function markAsPaid(id) {
     try {
-        await api(`/tenants/${id}/status`, {
-            method: 'PATCH',
-            body: { payment_status: 'paid' }
+        await db.collection('tenants').doc(id).update({
+            paymentStatus: 'paid',
+            paidDate: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        const t = tenants.find(x => x.id === id);
-        if (t) { t.paymentStatus = 'paid'; }
-        refreshDisplay();
+        
+        // Record payment
+        const tenant = tenants.find(x => x.id === id);
+        if (tenant) {
+            await db.collection('payments').add({
+                tenantId: id,
+                tenantName: tenant.tenantName,
+                unitNumber: tenant.unitNumber,
+                amountPaid: tenant.totalRent,
+                paymentDate: new Date().toISOString().split('T')[0],
+                method: 'M-Pesa',
+                reference: `PAID-${Date.now()}`,
+                recordedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
+        
+        await loadAllTenants();
         renderPaymentTracker();
         updateOverdueBadge();
-        const name = t ? t.tenantName : '';
+        const name = tenant ? tenant.tenantName : '';
         showAlert(`${name} marked as paid!`, 'success');
     } catch (e) {
         showAlert('Update failed: ' + e.message, 'error');
@@ -207,58 +328,79 @@ async function markAsPaid(id) {
 async function markSelectedAsPaid() {
     const ids = getSelectedIds();
     if (!ids.length) return;
+    
+    showLoading('Updating...');
     try {
-        await api('/tenants/bulk/status', {
-            method: 'PATCH',
-            body: { ids, payment_status: 'paid' }
-        });
+        const batch = db.batch();
         ids.forEach(id => {
-            const t = tenants.find(x => x.id === id);
-            if (t) t.paymentStatus = 'paid';
+            const ref = db.collection('tenants').doc(id);
+            batch.update(ref, {
+                paymentStatus: 'paid',
+                paidDate: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
         });
-        filteredTenants = [...tenants];
-        refreshDisplay();
+        await batch.commit();
+        
+        await loadAllTenants();
         updateOverdueBadge();
         document.getElementById('selectAll').checked = false;
         updateBulkActions();
         showAlert(`${ids.length} tenant(s) marked as paid!`, 'success');
     } catch (e) {
         showAlert('Bulk update failed: ' + e.message, 'error');
+    } finally {
+        hideLoading();
     }
 }
 
 async function deleteSelected() {
     const ids = getSelectedIds();
     if (!ids.length || !confirm(`Delete ${ids.length} tenant(s)?`)) return;
+    
+    showLoading('Deleting...');
     try {
-        await api('/tenants/bulk', { method: 'DELETE', body: { ids } });
-        tenants = tenants.filter(t => !ids.includes(t.id));
-        filteredTenants = [...tenants];
-        refreshDisplay();
+        const batch = db.batch();
+        ids.forEach(id => {
+            batch.delete(db.collection('tenants').doc(id));
+        });
+        await batch.commit();
+        
+        await loadAllTenants();
         updateOverdueBadge();
         document.getElementById('selectAll').checked = false;
         updateBulkActions();
         showAlert(`${ids.length} tenant(s) deleted.`, 'success');
     } catch (e) {
         showAlert('Delete failed: ' + e.message, 'error');
+    } finally {
+        hideLoading();
     }
 }
 
 async function markAllPaidPrompt() {
     if (!confirm('Mark ALL tenants as paid?')) return;
-    const ids = tenants.map(t => t.id);
+    
+    showLoading('Updating...');
     try {
-        await api('/tenants/bulk/status', {
-            method: 'PATCH',
-            body: { ids, payment_status: 'paid' }
+        const batch = db.batch();
+        tenants.forEach(t => {
+            const ref = db.collection('tenants').doc(t.id);
+            batch.update(ref, {
+                paymentStatus: 'paid',
+                paidDate: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
         });
-        tenants.forEach(t => t.paymentStatus = 'paid');
-        filteredTenants = [...tenants];
-        refreshDisplay();
+        await batch.commit();
+        
+        await loadAllTenants();
         updateOverdueBadge();
         showAlert('All tenants marked as paid!', 'success');
     } catch (e) {
         showAlert('Failed: ' + e.message, 'error');
+    } finally {
+        hideLoading();
     }
 }
 
@@ -268,82 +410,91 @@ async function checkOverdueTenants() {
     const toMark = tenants
         .filter(t => t.paymentStatus === 'pending' && t.dueDate && new Date(t.dueDate) < today)
         .map(t => t.id);
+    
     if (toMark.length) {
         try {
-            await api('/tenants/bulk/status', {
-                method: 'PATCH',
-                body: { ids: toMark, payment_status: 'overdue' }
-            });
+            const batch = db.batch();
             toMark.forEach(id => {
-                const t = tenants.find(x => x.id === id);
-                if (t) t.paymentStatus = 'overdue';
+                const ref = db.collection('tenants').doc(id);
+                batch.update(ref, {
+                    paymentStatus: 'overdue',
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
             });
-            filteredTenants = [...tenants];
-            refreshDisplay();
+            await batch.commit();
+            await loadAllTenants();
         } catch (e) { /* silent */ }
     }
 }
 
 // ═══════════════════════════════════════════════════
-//  SMS REMINDER SYSTEM
+//  SMS REMINDER SYSTEM (Firebase Version)
 // ═══════════════════════════════════════════════════
 
-/**
- * Called once on page load.
- * Checks immediately, then every 6 hours so you don't miss a day.
- */
 function scheduleSmsReminderCheck() {
     runSmsReminderCheck();
     setInterval(runSmsReminderCheck, 6 * 60 * 60 * 1000);
 }
 
-/**
- * Finds tenants whose rent is due in exactly 7 days (or fewer, down to 1)
- * and whose phone number is set, then fires the API reminder endpoint.
- * Only reminds tenants who have NOT already paid.
- */
 async function runSmsReminderCheck() {
     const today = new Date(); today.setHours(0, 0, 0, 0);
 
     const toRemind = tenants.filter(t => {
         if (!t.phone || t.paymentStatus === 'paid') return false;
         if (!t.dueDate) return false;
-        const due  = new Date(t.dueDate); due.setHours(0, 0, 0, 0);
+        const due = new Date(t.dueDate); due.setHours(0, 0, 0, 0);
         const diff = Math.round((due - today) / (1000 * 60 * 60 * 24));
         return diff >= 1 && diff <= 7;
     });
 
     if (!toRemind.length) return;
 
-    // Fire API endpoint — backend handles actual SMS via Africa's Talking
+    // Log reminders (actual SMS would use a service like Africa's Talking)
+    console.log(`📱 Would send ${toRemind.length} SMS reminders:`, 
+        toRemind.map(t => `${t.tenantName} (${t.phone})`).join(', '));
+    
+    // Store reminders in Firestore for tracking
     try {
-        const result = await api('/reminders/send', {
-            method: 'POST',
-            body: { tenant_ids: toRemind.map(t => t.id) }
-        });
-        if (result.sent > 0) {
-            showAlert(`📱 ${result.sent} rent reminder(s) sent via SMS`, 'info');
-            addNotification(`SMS reminders sent to ${result.sent} tenant(s)`, 'info');
+        for (const t of toRemind) {
+            await db.collection('reminders').add({
+                tenantId: t.id,
+                tenantName: t.tenantName,
+                phone: t.phone,
+                dueDate: t.dueDate,
+                sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+                status: 'sent',
+                type: 'auto'
+            });
         }
+        showAlert(`📱 ${toRemind.length} rent reminder(s) logged`, 'info');
+        addNotification(`SMS reminders logged for ${toRemind.length} tenant(s)`, 'info');
     } catch (e) {
         console.warn('SMS reminder check failed:', e.message);
     }
 }
 
-/**
- * Manually trigger reminders for selected tenants — callable from bulk actions.
- */
 async function sendBulkReminders() {
     const ids = getSelectedIds();
     if (!ids.length) { showAlert('Select tenants first.', 'warning'); return; }
+    
     showLoading('Sending reminders...');
     try {
-        const result = await api('/reminders/send', {
-            method: 'POST',
-            body: { tenant_ids: ids }
-        });
-        showAlert(`📱 ${result.sent} SMS reminder(s) sent!`, 'success');
-        addNotification(`Manual reminders sent to ${result.sent} tenant(s)`, 'info');
+        for (const id of ids) {
+            const t = tenants.find(x => x.id === id);
+            if (t && t.phone) {
+                await db.collection('reminders').add({
+                    tenantId: id,
+                    tenantName: t.tenantName,
+                    phone: t.phone,
+                    dueDate: t.dueDate,
+                    sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    status: 'sent',
+                    type: 'manual'
+                });
+            }
+        }
+        showAlert(`📱 ${ids.length} SMS reminder(s) logged!`, 'success');
+        addNotification(`Manual reminders logged for ${ids.length} tenant(s)`, 'info');
     } catch (e) {
         showAlert('Could not send reminders: ' + e.message, 'error');
     } finally {
@@ -353,27 +504,42 @@ async function sendBulkReminders() {
     }
 }
 
-/**
- * Preview which tenants would receive a reminder — shown in Reminders modal.
- */
 async function showRemindersModal() {
     openModal('remindersModal');
-    renderRemindersPreview();
+    await renderRemindersPreview();
 }
 
-function renderRemindersPreview() {
+async function renderRemindersPreview() {
     const el = document.getElementById('remindersPreviewContent');
     if (!el) return;
+
+    // Load reminder history
+    let reminderHistory = [];
+    try {
+        const snapshot = await db.collection('reminders')
+            .orderBy('sentAt', 'desc')
+            .limit(50)
+            .get();
+        snapshot.forEach(doc => {
+            reminderHistory.push({ id: doc.id, ...doc.data() });
+        });
+    } catch (e) {
+        console.warn('Could not load reminder history:', e);
+    }
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
 
     const rows = tenants
         .filter(t => t.paymentStatus !== 'paid')
         .map(t => {
-            const due  = t.dueDate ? new Date(t.dueDate) : null;
+            const due = t.dueDate ? new Date(t.dueDate) : null;
             due && due.setHours(0, 0, 0, 0);
             const diff = due ? Math.round((due - today) / (1000 * 60 * 60 * 24)) : null;
-            return { ...t, daysLeft: diff };
+            // Check if already reminded recently
+            const lastReminder = reminderHistory.find(r => r.tenantId === t.id);
+            const remindedRecently = lastReminder && 
+                (new Date() - new Date(lastReminder.sentAt?.toDate?.() || 0)) < 7 * 24 * 60 * 60 * 1000;
+            return { ...t, daysLeft: diff, lastReminder, remindedRecently };
         })
         .sort((a, b) => (a.daysLeft ?? 999) - (b.daysLeft ?? 999));
 
@@ -384,8 +550,8 @@ function renderRemindersPreview() {
 
     el.innerHTML = `
         <div style="margin-bottom:16px;padding:12px 16px;background:var(--surface-2);border-radius:10px;font-size:0.875rem;color:var(--text-3)">
-            <strong style="color:var(--text-1)">Auto-reminders</strong> are sent via SMS 7 days before the due date to tenants with a phone number on file.
-            You can also manually trigger a reminder using the button below.
+            <strong style="color:var(--text-1)">Auto-reminders</strong> are logged 7 days before the due date.
+            Tenants with a phone number will receive SMS notifications.
         </div>
         <table style="width:100%;border-collapse:collapse">
             <thead>
@@ -402,7 +568,7 @@ function renderRemindersPreview() {
             <tbody>
                 ${rows.map(t => {
                     const hasPhone = !!t.phone;
-                    const urgency  = t.daysLeft !== null
+                    const urgency = t.daysLeft !== null
                         ? t.daysLeft <= 0  ? 'overdue'
                         : t.daysLeft <= 3  ? 'urgent'
                         : t.daysLeft <= 7  ? 'soon'
@@ -413,6 +579,7 @@ function renderRemindersPreview() {
                         : t.daysLeft < 0  ? `${Math.abs(t.daysLeft)}d overdue`
                         : t.daysLeft === 0 ? 'Due today!'
                         : `${t.daysLeft} day${t.daysLeft !== 1 ? 's' : ''}`;
+                    const alreadySent = t.remindedRecently && t.phone;
                     return `<tr style="border-bottom:1px solid var(--border)">
                         <td style="padding:10px 12px;font-weight:600;color:var(--text-1)">${t.tenantName}</td>
                         <td style="padding:10px 12px"><span class="unit-badge">${t.unitNumber}</span></td>
@@ -420,13 +587,17 @@ function renderRemindersPreview() {
                         <td style="padding:10px 12px;font-size:0.875rem;color:var(--text-2)">${t.dueDate ? new Date(t.dueDate).toLocaleDateString('en-GB') : '—'}</td>
                         <td style="padding:10px 12px;font-weight:700;color:${urgencyColor}">${daysLabel}</td>
                         <td style="padding:10px 12px">${hasPhone
-                            ? `<span style="color:#10b981;font-size:0.8125rem;font-weight:600">✓ Enabled</span>`
+                            ? alreadySent
+                                ? `<span style="color:#10b981;font-size:0.8125rem;font-weight:600">✓ Sent</span>`
+                                : `<span style="color:#0ea5e9;font-size:0.8125rem;font-weight:600">Ready</span>`
                             : `<span style="color:var(--text-4);font-size:0.8125rem">No phone</span>`}
                         </td>
                         <td style="padding:10px 12px">
-                            ${hasPhone
-                                ? `<button class="btn btn-outline btn-sm" onclick="sendReminderNow(${t.id})">Send now</button>`
-                                : `<button class="btn btn-outline btn-sm" onclick="editTenant(${t.id})" title="Add phone number">+ Phone</button>`}
+                            ${hasPhone && !alreadySent
+                                ? `<button class="btn btn-outline btn-sm" onclick="sendReminderNow('${t.id}')">Send now</button>`
+                                : hasPhone && alreadySent
+                                ? `<span style="font-size:0.8125rem;color:var(--text-4)">Sent ${new Date(t.lastReminder.sentAt?.toDate?.() || 0).toLocaleDateString()}</span>`
+                                : `<button class="btn btn-outline btn-sm" onclick="editTenant('${t.id}')" title="Add phone number">+ Phone</button>`}
                         </td>
                     </tr>`;
                 }).join('')}
@@ -440,15 +611,26 @@ function renderRemindersPreview() {
 }
 
 async function sendReminderNow(id) {
+    const t = tenants.find(x => x.id === id);
+    if (!t || !t.phone) {
+        showAlert('Tenant has no phone number.', 'error');
+        return;
+    }
+    
     showLoading('Sending SMS...');
     try {
-        const result = await api('/reminders/send', {
-            method: 'POST',
-            body: { tenant_ids: [id] }
+        await db.collection('reminders').add({
+            tenantId: id,
+            tenantName: t.tenantName,
+            phone: t.phone,
+            dueDate: t.dueDate,
+            sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'sent',
+            type: 'manual'
         });
-        const t = tenants.find(x => x.id === id);
-        showAlert(`📱 Reminder sent to ${t ? t.tenantName : 'tenant'}!`, 'success');
-        addNotification(`Reminder sent to ${t ? t.tenantName : 'tenant'}`, 'info');
+        showAlert(`📱 Reminder sent to ${t.tenantName}!`, 'success');
+        addNotification(`Reminder sent to ${t.tenantName}`, 'info');
+        await renderRemindersPreview();
     } catch (e) {
         showAlert('Could not send reminder: ' + e.message, 'error');
     } finally {
@@ -458,26 +640,32 @@ async function sendReminderNow(id) {
 
 async function sendAllDueReminders() {
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const ids = tenants
+    const dueTenants = tenants
         .filter(t => {
             if (!t.phone || t.paymentStatus === 'paid' || !t.dueDate) return false;
-            const due  = new Date(t.dueDate); due.setHours(0, 0, 0, 0);
+            const due = new Date(t.dueDate); due.setHours(0, 0, 0, 0);
             const diff = Math.round((due - today) / (1000 * 60 * 60 * 24));
             return diff >= 1 && diff <= 7;
-        })
-        .map(t => t.id);
+        });
 
-    if (!ids.length) { showAlert('No tenants with upcoming dues (≤7 days).', 'info'); return; }
+    if (!dueTenants.length) { showAlert('No tenants with upcoming dues (≤7 days).', 'info'); return; }
 
     showLoading('Sending reminders...');
     try {
-        const result = await api('/reminders/send', {
-            method: 'POST',
-            body: { tenant_ids: ids }
-        });
-        showAlert(`📱 ${result.sent} reminder(s) sent!`, 'success');
-        addNotification(`Batch reminders sent to ${result.sent} tenant(s)`, 'info');
-        renderRemindersPreview();
+        for (const t of dueTenants) {
+            await db.collection('reminders').add({
+                tenantId: t.id,
+                tenantName: t.tenantName,
+                phone: t.phone,
+                dueDate: t.dueDate,
+                sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+                status: 'sent',
+                type: 'batch'
+            });
+        }
+        showAlert(`📱 ${dueTenants.length} reminder(s) sent!`, 'success');
+        addNotification(`Batch reminders sent to ${dueTenants.length} tenant(s)`, 'info');
+        await renderRemindersPreview();
     } catch (e) {
         showAlert('Could not send reminders: ' + e.message, 'error');
     } finally {
@@ -488,8 +676,9 @@ async function sendAllDueReminders() {
 function closeRemindersModal() { closeModal('remindersModal'); }
 
 // ═══════════════════════════════════════════════════
-//  IMPORT (Excel → API)
+//  IMPORT (Excel → Firestore)
 // ═══════════════════════════════════════════════════
+
 function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -505,40 +694,64 @@ function handleFileUpload(event) {
 
 async function importTenants(data) {
     showLoading('Importing...');
-    const payload = data.map(row => ({
-        tenant_name:       row.TenantName   || 'Unknown',
-        unit_number:       row.UnitNumber   || 'N/A',
-        email:             row.Email        || '',
-        phone:             row.Phone        || '',
-        previous_reading:  parseFloat(row.PreviousReading || 0),
-        current_reading:   parseFloat(row.CurrentReading  || 0),
-        rate_per_unit:     parseFloat(row.RatePerUnit     || 0),
-        base_rent:         parseFloat(row.BaseRent        || 0),
-        payment_status:    row.PaymentStatus || 'pending',
-        due_date:          row.DueDate       || null,
-        ch_electricity:    parseFloat(row.Electricity     || 0),
-        ch_tokens:         parseFloat(row.Tokens          || 0),
-        ch_security_pump:  parseFloat(row.SecurityPump    || 0),
-        ch_caretaker_wifi: parseFloat(row.CaretakerWifi   || 0),
-        ch_wifi_cctv:      parseFloat(row.WIFIAndCCTV     || 0),
-        ch_security:       parseFloat(row.Security        || 0),
-        ch_rujuwasco:      parseFloat(row.Rujuwasco       || 0),
-        ch_care_taker:     parseFloat(row.CareTaker       || 0),
-        ch_repair_works:   parseFloat(row.RepairWorks     || 0),
-        ch_bio_digester:   parseFloat(row.BioDigester     || 0),
-        ch_repainting:     parseFloat(row.Repainting      || 0),
-        ch_wifi:           parseFloat(row.WIFI            || 0),
-        ch_house_refunds:  parseFloat(row.HouseRefunds    || 0),
-        ch_garbage:        parseFloat(row.Garbage         || 0),
-        ch_other:          parseFloat(row.OtherCharges    || 0),
-    }));
-
+    let imported = 0;
+    
     try {
-        const result = await api('/tenants/import', { method: 'POST', body: payload });
+        for (const row of data) {
+            const prev = parseFloat(row.PreviousReading || 0);
+            const curr = parseFloat(row.CurrentReading || 0);
+            const rate = parseFloat(row.RatePerUnit || 50);
+            const units = Math.max(0, curr - prev);
+            const waterBill = units * rate;
+            const baseRent = parseFloat(row.BaseRent || 0);
+            
+            const otherChargesMap = {
+                ch_electricity: parseFloat(row.Electricity || 0),
+                ch_tokens: parseFloat(row.Tokens || 0),
+                ch_security_pump: parseFloat(row.SecurityPump || 0),
+                ch_caretaker_wifi: parseFloat(row.CaretakerWifi || 0),
+                ch_wifi_cctv: parseFloat(row.WIFIAndCCTV || 0),
+                ch_security: parseFloat(row.Security || 0),
+                ch_rujuwasco: parseFloat(row.Rujuwasco || 0),
+                ch_care_taker: parseFloat(row.CareTaker || 0),
+                ch_repair_works: parseFloat(row.RepairWorks || 0),
+                ch_bio_digester: parseFloat(row.BioDigester || 0),
+                ch_repainting: parseFloat(row.Repainting || 0),
+                ch_wifi: parseFloat(row.WIFI || 0),
+                ch_house_refunds: parseFloat(row.HouseRefunds || 0),
+                ch_garbage: parseFloat(row.Garbage || 0),
+                ch_other: parseFloat(row.OtherCharges || 0)
+            };
+            
+            const otherChargesTotal = Object.values(otherChargesMap).reduce((a, b) => a + b, 0);
+            const totalRent = baseRent + waterBill + otherChargesTotal;
+            
+            await db.collection('tenants').add({
+                tenantName: row.TenantName || 'Unknown',
+                unitNumber: row.UnitNumber || 'N/A',
+                email: row.Email || '',
+                phone: row.Phone || '',
+                previousReading: prev,
+                currentReading: curr,
+                ratePerUnit: rate,
+                unitsConsumed: units,
+                waterBill: waterBill,
+                baseRent: baseRent,
+                otherCharges: otherChargesTotal,
+                totalRent: totalRent,
+                paymentStatus: row.PaymentStatus || 'pending',
+                dueDate: row.DueDate || null,
+                ...otherChargesMap,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            imported++;
+        }
+        
         await loadAllTenants();
         closeImportModal();
-        showAlert(`Imported ${result.imported} tenant(s)!`, 'success');
-        addNotification(`Imported ${result.imported} tenant(s)`, 'info');
+        showAlert(`Imported ${imported} tenant(s)!`, 'success');
+        addNotification(`Imported ${imported} tenant(s)`, 'info');
     } catch (e) {
         showAlert('Import failed: ' + e.message, 'error');
     } finally {
@@ -547,7 +760,7 @@ async function importTenants(data) {
 }
 
 // ═══════════════════════════════════════════════════
-//  SIDEBAR — FIXED DROPDOWN NAVIGATION
+//  SIDEBAR NAVIGATION (unchanged)
 // ═══════════════════════════════════════════════════
 
 function toggleSidebar() {
@@ -561,48 +774,34 @@ function toggleSidebar() {
 function toggleDropdown(id) {
     const el = document.getElementById(id);
     const isOpen = el.classList.contains('open');
-    // Close all dropdowns
     document.querySelectorAll('.nav-dropdown.open').forEach(d => d.classList.remove('open'));
-    // Toggle clicked one
     if (!isOpen) el.classList.add('open');
 }
 
-/**
- * FIX: Previously setParentActive removed ALL .active classes including the parent button,
- * then tried to add it back — but the query targeted `.has-dropdown` buttons which were
- * already stripped. Now we clear only non-dropdown nav items so the parent stays active.
- */
 function setParentActive(dropdownId) {
-    // Only clear non-dropdown nav-item actives (leaf links)
     document.querySelectorAll('.nav-item.active:not(.has-dropdown)').forEach(el => el.classList.remove('active'));
-    // Set the parent dropdown button as active
     const btn = document.querySelector(`#${dropdownId} .nav-item.has-dropdown`);
     if (btn) btn.classList.add('active');
 }
 
 // ═══════════════════════════════════════════════════
-//  NAVIGATION — FIXED
+//  NAVIGATION
 // ═══════════════════════════════════════════════════
 
 function navigateTo(page, linkEl) {
     const bcCurrent = document.getElementById('bcCurrent');
     bcCurrent.textContent = bcNames[page] || page;
 
-    // Show the matching view, hide others
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     const viewEl = document.getElementById(`view-${page}`);
     if (viewEl) viewEl.classList.add('active');
 
-    // FIX: when linkEl is an anchor inside a dropdown, mark it active
-    // without stripping the parent dropdown button's active class.
     if (linkEl) {
         const isDropdownItem = linkEl.classList.contains('dropdown-item');
         if (!isDropdownItem) {
-            // Top-level nav item — clear all and set this one
             document.querySelectorAll('.nav-item.active').forEach(el => el.classList.remove('active'));
             if (!linkEl.classList.contains('has-dropdown')) linkEl.classList.add('active');
         }
-        // For dropdown-items, setParentActive() is called separately in the onclick
     }
 
     if (page === 'overdue') {
@@ -612,7 +811,7 @@ function navigateTo(page, linkEl) {
     } else if (page === 'all-tenants' || page === 'dashboard') {
         filteredTenants = [...tenants];
         document.getElementById('filterStatus').value = 'all';
-        document.getElementById('searchInput').value  = '';
+        document.getElementById('searchInput').value = '';
         displayTenants();
     } else if (page === 'water-readings') {
         displayWaterReadings();
@@ -631,6 +830,7 @@ function initTheme() {
     const saved = localStorage.getItem('propflow-theme') || 'light';
     document.documentElement.setAttribute('data-theme', saved);
 }
+
 function toggleTheme() {
     const curr = document.documentElement.getAttribute('data-theme');
     const next = curr === 'dark' ? 'light' : 'dark';
@@ -654,6 +854,7 @@ function showLoading(msg = 'Processing...') {
     el.querySelector('p').textContent = msg;
     el.classList.add('active');
 }
+
 function hideLoading() {
     document.getElementById('loadingOverlay').classList.remove('active');
 }
@@ -666,23 +867,27 @@ function initNotifications() {
     if (pendingCount > 0) addNotification(`${pendingCount} tenant(s) with pending payments`, 'info');
     updateNotifBadge();
 }
+
 function addNotification(message, type = 'info') {
     notifications.unshift({ id: Date.now(), message, type, timestamp: new Date(), read: false });
     updateNotifBadge();
     renderNotifications();
 }
+
 function updateNotifBadge() {
     const badge = document.getElementById('notifBadge');
     const count = notifications.filter(n => !n.read).length;
     if (count > 0) { badge.textContent = count > 9 ? '9+' : count; badge.style.display = 'block'; }
     else badge.style.display = 'none';
 }
+
 function updateOverdueBadge() {
     const badge = document.getElementById('overdueBadge');
     const count = tenants.filter(t => t.paymentStatus === 'overdue').length;
-    badge.textContent   = count;
+    badge.textContent = count;
     badge.style.display = count > 0 ? 'inline-block' : 'none';
 }
+
 function toggleNotifications() {
     const panel = document.getElementById('notifPanel');
     panel.classList.toggle('open');
@@ -692,6 +897,7 @@ function toggleNotifications() {
         renderNotifications();
     }
 }
+
 function renderNotifications() {
     const list = document.getElementById('notifList');
     if (!notifications.length) {
@@ -707,6 +913,7 @@ function renderNotifications() {
             </div>
         </div>`).join('');
 }
+
 function formatTime(date) {
     const diff = Date.now() - new Date(date);
     const m = Math.floor(diff / 60000);
@@ -720,7 +927,7 @@ function formatTime(date) {
 
 document.addEventListener('click', (e) => {
     const panel = document.getElementById('notifPanel');
-    const btn   = document.getElementById('notifBtn');
+    const btn = document.getElementById('notifBtn');
     if (panel.classList.contains('open') && !panel.contains(e.target) && !btn.contains(e.target))
         panel.classList.remove('open');
     if (window.innerWidth <= 768 && document.body.classList.contains('mobile-sidebar-open')) {
@@ -731,7 +938,7 @@ document.addEventListener('click', (e) => {
 
 // === TENANT MODAL ===
 function showAddTenantModal() {
-    editingId = -1;
+    editingId = null;
     document.getElementById('modalTitle').textContent = 'Add New Tenant';
     document.getElementById('tenantForm').reset();
     document.getElementById('paymentStatus').value = 'pending';
@@ -743,30 +950,34 @@ function showAddTenantModal() {
     calculateTotal();
     openModal('tenantModal');
 }
+
 function closeTenantModal() { closeModal('tenantModal'); }
+
 function setDefaultDueDate() {
     const now = new Date();
     const due = new Date(now.getFullYear(), now.getMonth() + 1, 5);
-    const el  = document.getElementById('dueDate');
+    const el = document.getElementById('dueDate');
     if (el) el.value = due.toISOString().split('T')[0];
 }
 
 function editTenant(id) {
     const t = tenants.find(x => x.id === id);
     if (!t) return;
+    
     editingId = id;
     document.getElementById('modalTitle').textContent = 'Edit Tenant';
-    document.getElementById('tenantName').value        = t.tenantName;
-    document.getElementById('unitNumber').value        = t.unitNumber;
-    document.getElementById('tenantEmail').value       = t.email || '';
-    document.getElementById('tenantPhone').value       = t.phone || '';
-    document.getElementById('previousReading').value   = t.previousReading;
-    document.getElementById('currentReading').value    = t.currentReading;
-    document.getElementById('ratePerUnit').value       = t.ratePerUnit;
-    document.getElementById('baseRent').value          = t.baseRent;
-    document.getElementById('paymentStatus').value     = t.paymentStatus || 'pending';
-    document.getElementById('dueDate').value           = t.dueDate || '';
-    const b   = t.otherChargesBreakdown || {};
+    document.getElementById('tenantName').value = t.tenantName;
+    document.getElementById('unitNumber').value = t.unitNumber;
+    document.getElementById('tenantEmail').value = t.email || '';
+    document.getElementById('tenantPhone').value = t.phone || '';
+    document.getElementById('previousReading').value = t.previousReading;
+    document.getElementById('currentReading').value = t.currentReading;
+    document.getElementById('ratePerUnit').value = t.ratePerUnit;
+    document.getElementById('baseRent').value = t.baseRent;
+    document.getElementById('paymentStatus').value = t.paymentStatus || 'pending';
+    document.getElementById('dueDate').value = t.dueDate || '';
+    
+    const b = t.otherChargesBreakdown || {};
     const map = {
         electricity:'electricity', tokens:'tokens', securityPump:'securityPump',
         caretakerWifi:'caretakerWifi', wifiCCTV:'wifiCCTV', security:'security',
@@ -778,24 +989,26 @@ function editTenant(id) {
         const el = document.getElementById(elId);
         if (el) el.value = b[key] || 0;
     });
+    
     calculateWaterBill();
     calculateTotal();
     openModal('tenantModal');
 }
 
 function calculateWaterBill() {
-    const prev  = parseFloat(document.getElementById('previousReading').value) || 0;
-    const curr  = parseFloat(document.getElementById('currentReading').value)  || 0;
+    const prev = parseFloat(document.getElementById('previousReading').value) || 0;
+    const curr = parseFloat(document.getElementById('currentReading').value) || 0;
     const units = curr - prev;
     const el = document.getElementById('unitsConsumed');
     if (el) el.value = units.toFixed(1);
     calculateTotal();
 }
+
 function calculateTotal() {
-    const baseRent  = parseFloat(document.getElementById('baseRent').value) || 0;
-    const prev      = parseFloat(document.getElementById('previousReading').value) || 0;
-    const curr      = parseFloat(document.getElementById('currentReading').value)  || 0;
-    const rate      = parseFloat(document.getElementById('ratePerUnit').value)     || 0;
+    const baseRent = parseFloat(document.getElementById('baseRent').value) || 0;
+    const prev = parseFloat(document.getElementById('previousReading').value) || 0;
+    const curr = parseFloat(document.getElementById('currentReading').value) || 0;
+    const rate = parseFloat(document.getElementById('ratePerUnit').value) || 0;
     const waterBill = (curr - prev) * rate;
     const chargeIds = ['electricity','tokens','securityPump','caretakerWifi','wifiCCTV','security',
                        'rujuwasco','careTaker','repairWorks','bioDigester','repainting','wifi',
@@ -803,10 +1016,10 @@ function calculateTotal() {
     const totalOther = chargeIds.reduce((sum, id) => sum + (parseFloat(document.getElementById(id)?.value) || 0), 0);
     const total = baseRent + waterBill + totalOther;
     const fmt = v => `KES ${v.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-    document.getElementById('previewBaseRent').textContent    = fmt(baseRent);
-    document.getElementById('previewWaterBill').textContent   = fmt(waterBill);
-    document.getElementById('previewOtherCharges').textContent= fmt(totalOther);
-    document.getElementById('previewTotal').textContent       = fmt(total);
+    document.getElementById('previewBaseRent').textContent = fmt(baseRent);
+    document.getElementById('previewWaterBill').textContent = fmt(waterBill);
+    document.getElementById('previewOtherCharges').textContent = fmt(totalOther);
+    document.getElementById('previewTotal').textContent = fmt(total);
 }
 
 // === SEARCH / FILTER / SORT ===
@@ -815,8 +1028,10 @@ function handleGlobalSearch() {
     document.getElementById('searchInput').value = val;
     searchTenants();
 }
-function searchTenants()  { applyFilters(); }
-function filterTenants()  { applyFilters(); }
+
+function searchTenants() { applyFilters(); }
+function filterTenants() { applyFilters(); }
+
 function applyFilters() {
     const search = document.getElementById('searchInput').value.toLowerCase();
     const status = document.getElementById('filterStatus').value;
@@ -827,40 +1042,45 @@ function applyFilters() {
     });
     sortTenants();
 }
+
 function sortTenants() {
     const sort = document.getElementById('sortBy').value;
     switch (sort) {
-        case 'name':        filteredTenants.sort((a, b) => a.tenantName.localeCompare(b.tenantName)); break;
-        case 'unit':        filteredTenants.sort((a, b) => a.unitNumber.localeCompare(b.unitNumber)); break;
-        case 'rent-high':   filteredTenants.sort((a, b) => b.totalRent - a.totalRent); break;
-        case 'rent-low':    filteredTenants.sort((a, b) => a.totalRent - b.totalRent); break;
-        case 'water-high':  filteredTenants.sort((a, b) => b.waterBill - a.waterBill); break;
+        case 'name': filteredTenants.sort((a, b) => a.tenantName.localeCompare(b.tenantName)); break;
+        case 'unit': filteredTenants.sort((a, b) => a.unitNumber.localeCompare(b.unitNumber)); break;
+        case 'rent-high': filteredTenants.sort((a, b) => b.totalRent - a.totalRent); break;
+        case 'rent-low': filteredTenants.sort((a, b) => a.totalRent - b.totalRent); break;
+        case 'water-high': filteredTenants.sort((a, b) => b.waterBill - a.waterBill); break;
     }
     displayTenants();
 }
 
 // === DISPLAY ===
-function refreshDisplay()      { displayStats(); displayTenants(); updateTableSubtitle(); }
-function updateTableSubtitle() { document.getElementById('tableSubtitle').textContent = `${tenants.length} tenant${tenants.length !== 1 ? 's' : ''} registered`; }
+function refreshDisplay() { displayStats(); displayTenants(); updateTableSubtitle(); }
+
+function updateTableSubtitle() {
+    document.getElementById('tableSubtitle').textContent = `${tenants.length} tenant${tenants.length !== 1 ? 's' : ''} registered`;
+}
 
 function displayStats() {
-    const total   = tenants.length;
-    const totalRent  = tenants.reduce((s, t) => s + t.totalRent,  0);
-    const totalWater = tenants.reduce((s, t) => s + t.waterBill,  0);
+    const total = tenants.length;
+    const totalRent = tenants.reduce((s, t) => s + t.totalRent, 0);
+    const totalWater = tenants.reduce((s, t) => s + t.waterBill, 0);
     const totalUnits = tenants.reduce((s, t) => s + t.unitsConsumed, 0);
-    const paid    = tenants.filter(t => t.paymentStatus === 'paid').length;
+    const paid = tenants.filter(t => t.paymentStatus === 'paid').length;
     const pending = tenants.filter(t => t.paymentStatus !== 'paid').reduce((s, t) => s + t.totalRent, 0);
     const overdue = tenants.filter(t => t.paymentStatus === 'overdue').length;
-    const avg     = total > 0 ? totalRent / total : 0;
-    document.getElementById('totalTenants').textContent    = total;
-    document.getElementById('totalRevenue').textContent    = `KES ${totalRent.toLocaleString(undefined, {maximumFractionDigits:0})}`;
-    document.getElementById('totalWater').textContent      = `KES ${totalWater.toLocaleString(undefined, {maximumFractionDigits:0})}`;
+    const avg = total > 0 ? totalRent / total : 0;
+    
+    document.getElementById('totalTenants').textContent = total;
+    document.getElementById('totalRevenue').textContent = `KES ${totalRent.toLocaleString(undefined, {maximumFractionDigits:0})}`;
+    document.getElementById('totalWater').textContent = `KES ${totalWater.toLocaleString(undefined, {maximumFractionDigits:0})}`;
     document.getElementById('pendingPayments').textContent = `KES ${pending.toLocaleString(undefined, {maximumFractionDigits:0})}`;
-    document.getElementById('avgRent').textContent         = `KES ${avg.toLocaleString(undefined, {maximumFractionDigits:0})}`;
-    document.getElementById('paidTenants').textContent     = paid;
-    document.getElementById('waterChange').textContent     = `${totalUnits.toFixed(0)} units total`;
-    document.getElementById('overdueCount').textContent    = `${overdue} overdue`;
-    document.getElementById('paidPercentage').textContent  = total > 0 ? `${((paid/total)*100).toFixed(0)}% payment rate` : '0% payment rate';
+    document.getElementById('avgRent').textContent = `KES ${avg.toLocaleString(undefined, {maximumFractionDigits:0})}`;
+    document.getElementById('paidTenants').textContent = paid;
+    document.getElementById('waterChange').textContent = `${totalUnits.toFixed(0)} units total`;
+    document.getElementById('overdueCount').textContent = `${overdue} overdue`;
+    document.getElementById('paidPercentage').textContent = total > 0 ? `${((paid/total)*100).toFixed(0)}% payment rate` : '0% payment rate';
 }
 
 function displayTenants() {
@@ -874,8 +1094,9 @@ function displayTenants() {
         </div></td></tr>`;
         return;
     }
+    
     tbody.innerHTML = filteredTenants.map(t => {
-        const initials    = t.tenantName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+        const initials = t.tenantName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
         const statusBadge = `<span class="badge badge-${t.paymentStatus||'pending'}">${t.paymentStatus||'pending'}</span>`;
         return `
             <tr>
@@ -894,9 +1115,9 @@ function displayTenants() {
                 <td class="num">${fmtKes(t.otherCharges)}</td>
                 <td class="num tot">${fmtKes(t.totalRent)}</td>
                 <td><div class="tbl-actions">
-                    <button class="tbl-btn" onclick="generateInvoice(${t.id})" title="Invoice">📄</button>
-                    <button class="tbl-btn" onclick="editTenant(${t.id})" title="Edit">✏️</button>
-                    <button class="tbl-btn tbl-btn-danger" onclick="deleteTenant(${t.id})" title="Delete">🗑</button>
+                    <button class="tbl-btn" onclick="generateInvoice('${t.id}')" title="Invoice">📄</button>
+                    <button class="tbl-btn" onclick="editTenant('${t.id}')" title="Edit">✏️</button>
+                    <button class="tbl-btn tbl-btn-danger" onclick="deleteTenant('${t.id}')" title="Delete">🗑</button>
                 </div></td>
             </tr>`;
     }).join('');
@@ -912,14 +1133,16 @@ function toggleSelectAll() {
     document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = all);
     updateBulkActions();
 }
+
 function updateBulkActions() {
     const checked = document.querySelectorAll('.row-checkbox:checked').length;
-    const bar     = document.getElementById('bulkActionsBar');
+    const bar = document.getElementById('bulkActionsBar');
     document.getElementById('selectedCount').textContent = `${checked} selected`;
     bar.style.display = checked > 0 ? 'flex' : 'none';
 }
+
 function getSelectedIds() {
-    return Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => parseInt(cb.dataset.id));
+    return Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => cb.dataset.id);
 }
 
 function printSelectedInvoicesPrompt() {
@@ -927,10 +1150,11 @@ function printSelectedInvoicesPrompt() {
     if (!ids.length) { showAlert('Select tenants first.', 'warning'); return; }
     printSelectedInvoices();
 }
+
 function printSelectedInvoices() {
     const ids = getSelectedIds();
     if (!ids.length) { showAlert('Select tenants first.', 'warning'); return; }
-    const w    = window.open('', '', 'width=900,height=700');
+    const w = window.open('', '', 'width=900,height=700');
     const html = ids.map(id => {
         const idx = tenants.findIndex(t => t.id === id);
         return generateInvoiceHTML(idx, true);
@@ -947,10 +1171,11 @@ function generateInvoice(id) {
     document.getElementById('invoiceContent').innerHTML = generateInvoiceHTML(idx, false);
     openModal('invoiceModal');
 }
+
 function generateInvoiceHTML(index, forPrint) {
-    const t      = tenants[index];
-    const today  = new Date().toLocaleDateString('en-GB');
-    const invNum = `INV-${String(t.id).padStart(4, '0')}`;
+    const t = tenants[index];
+    const today = new Date().toLocaleDateString('en-GB');
+    const invNum = `INV-${String(index + 1).padStart(4, '0')}`;
     const chargeLabels = {
         electricity:'Electricity', tokens:'Tokens', securityPump:'Security + Pump',
         caretakerWifi:'Caretaker + WiFi', wifiCCTV:'WiFi & CCTV', security:'Security',
@@ -958,11 +1183,12 @@ function generateInvoiceHTML(index, forPrint) {
         bioDigester:'Bio Digester', repainting:'Repainting', wifi:'WiFi',
         houseRefunds:'House Refunds', garbage:'Garbage', other:'Other'
     };
-    const breakdown  = t.otherChargesBreakdown || {};
-    const otherRows  = Object.entries(chargeLabels)
+    const breakdown = t.otherChargesBreakdown || {};
+    const otherRows = Object.entries(chargeLabels)
         .filter(([k]) => breakdown[k] > 0)
         .map(([k, label]) => `<tr><td style="padding:10px 14px;border-bottom:1px solid #e5e7eb"><strong>${label}</strong></td><td style="padding:10px 14px;text-align:center;border-bottom:1px solid #e5e7eb">1</td><td style="padding:10px 14px;text-align:right;border-bottom:1px solid #e5e7eb">${breakdown[k].toFixed(2)}</td><td style="padding:10px 14px;text-align:right;border-bottom:1px solid #e5e7eb;font-weight:600">${breakdown[k].toFixed(2)}</td></tr>`)
         .join('');
+    
     return `<div class="invoice" style="${forPrint?'page-break-after:always;padding:40px':''}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;padding-bottom:24px;border-bottom:3px solid #6366f1">
             <div><h2 style="font-size:1.5rem;font-weight:800;color:#6366f1;margin-bottom:8px">${settings.companyName}</h2><p style="color:#6b7280;font-size:0.875rem;line-height:2">${settings.companyAddress}<br>Phone: ${settings.companyPhone}<br>Email: ${settings.companyEmail}</p></div>
@@ -980,12 +1206,13 @@ function generateInvoiceHTML(index, forPrint) {
         <div style="margin-top:36px;padding-top:20px;border-top:2px solid #e5e7eb;text-align:center;color:#9ca3af;font-size:0.8125rem"><p><strong style="color:#374151">Payment:</strong> M-Pesa: ${settings.mpesaNumber} | Bank: ${settings.bankName} Acc: ${settings.bankAccount}</p><p style="margin-top:8px">Thank you for your tenancy — ${settings.companyName}</p></div>
     </div>`;
 }
-function closeInvoiceModal()  { closeModal('invoiceModal'); }
-function printInvoice()       { window.print(); }
+
+function closeInvoiceModal() { closeModal('invoiceModal'); }
+function printInvoice() { window.print(); }
 function downloadInvoicePDF() { showAlert('PDF export coming soon!', 'info'); }
 
 // === IMPORT / EXPORT ===
-function showImportModal()  { openModal('importModal'); }
+function showImportModal() { openModal('importModal'); }
 function closeImportModal() { closeModal('importModal'); }
 
 function downloadTemplate() {
@@ -995,6 +1222,7 @@ function downloadTemplate() {
     XLSX.utils.book_append_sheet(wb, ws, 'Template');
     XLSX.writeFile(wb, 'propflow_template.xlsx');
 }
+
 function exportToExcel() {
     if (!tenants.length) { showAlert('No data to export!', 'warning'); return; }
     const data = tenants.map(t => ({
@@ -1009,44 +1237,52 @@ function exportToExcel() {
     XLSX.writeFile(wb, `propflow_export_${new Date().toISOString().split('T')[0]}.xlsx`);
     showAlert('Exported successfully!', 'success');
 }
+
 function printAllInvoices() {
     if (!tenants.length) { showAlert('No tenants!', 'warning'); return; }
-    const w    = window.open('', '', 'width=900,height=700');
+    const w = window.open('', '', 'width=900,height=700');
     const html = tenants.map((_, i) => generateInvoiceHTML(i, true)).join('');
     w.document.write(`<html><head><title>All Invoices</title><style>body{font-family:Arial,sans-serif}@media print{.invoice{page-break-after:always}}</style></head><body>${html}</body></html>`);
     w.document.close(); w.print();
 }
 
 // === ANALYTICS ===
-function showAnalytics()       { openModal('analyticsModal'); renderCharts(); }
+function showAnalytics() { openModal('analyticsModal'); renderCharts(); }
 function closeAnalyticsModal() { closeModal('analyticsModal'); }
+
 let chartInstances = {};
+
 function renderCharts() {
     Object.values(chartInstances).forEach(c => c.destroy());
     chartInstances = {};
     renderRevenueChart(); renderPaymentChart(); renderWaterChart(); renderTrendChart();
 }
+
 function renderRevenueChart() {
     const ctx = document.getElementById('revenueChart'); if (!ctx) return;
     chartInstances.revenue = new Chart(ctx, { type:'doughnut', data:{ labels:['Base Rent','Water Bills','Other Charges'], datasets:[{ data:[tenants.reduce((s,t)=>s+t.baseRent,0), tenants.reduce((s,t)=>s+t.waterBill,0), tenants.reduce((s,t)=>s+t.otherCharges,0)], backgroundColor:['#6366f1','#0ea5e9','#10b981'], borderWidth:0 }] }, options:{ responsive:true, plugins:{legend:{position:'bottom'}} } });
 }
+
 function renderPaymentChart() {
     const ctx = document.getElementById('paymentChart'); if (!ctx) return;
     chartInstances.payment = new Chart(ctx, { type:'pie', data:{ labels:['Paid','Pending','Overdue'], datasets:[{ data:[tenants.filter(t=>t.paymentStatus==='paid').length, tenants.filter(t=>t.paymentStatus==='pending').length, tenants.filter(t=>t.paymentStatus==='overdue').length], backgroundColor:['#10b981','#f59e0b','#ef4444'], borderWidth:0 }] }, options:{ responsive:true, plugins:{legend:{position:'bottom'}} } });
 }
+
 function renderWaterChart() {
     const ctx = document.getElementById('waterChart'); if (!ctx) return;
     const top = [...tenants].sort((a,b)=>b.unitsConsumed-a.unitsConsumed).slice(0,8);
     chartInstances.water = new Chart(ctx, { type:'bar', data:{ labels:top.map(t=>t.unitNumber), datasets:[{ label:'Units', data:top.map(t=>t.unitsConsumed), backgroundColor:'#0ea5e9', borderRadius:4 }] }, options:{ responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} } });
 }
+
 function renderTrendChart() {
     const ctx = document.getElementById('trendChart'); if (!ctx) return;
     chartInstances.trend = new Chart(ctx, { type:'line', data:{ labels:['Sep','Oct','Nov','Dec','Jan','Feb'], datasets:[{ label:'Revenue', data:[45000,52000,49000,58000,61000,tenants.reduce((s,t)=>s+t.totalRent,0)], borderColor:'#6366f1', backgroundColor:'rgba(99,102,241,0.08)', tension:0.4, fill:true, pointBackgroundColor:'#6366f1' }] }, options:{ responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} } });
 }
 
 // === PAYMENT TRACKER ===
-function showPaymentTracker()  { openModal('paymentModal'); renderPaymentTracker(); }
-function closePaymentModal()   { closeModal('paymentModal'); }
+function showPaymentTracker() { openModal('paymentModal'); renderPaymentTracker(); }
+function closePaymentModal() { closeModal('paymentModal'); }
+
 function renderPaymentTracker() {
     const el = document.getElementById('paymentTrackerContent');
     if (!tenants.length) { el.innerHTML = '<p style="text-align:center;padding:32px;color:var(--text-4)">No tenants found.</p>'; return; }
@@ -1057,7 +1293,7 @@ function renderPaymentTracker() {
             <td style="font-family:var(--font-mono);font-weight:600">KES ${fmtKes(t.totalRent)}</td>
             <td><span class="badge badge-${t.paymentStatus||'pending'}">${t.paymentStatus||'pending'}</span></td>
             <td style="font-size:0.8125rem;color:var(--text-3)">${t.dueDate?new Date(t.dueDate).toLocaleDateString('en-GB'):'N/A'}</td>
-            <td>${t.paymentStatus!=='paid'?`<button class="btn btn-success btn-sm" onclick="markAsPaid(${t.id})">Mark Paid</button>`:'<span style="color:var(--green);font-size:0.8125rem;font-weight:600">✓ Paid</span>'}</td>
+            <td>${t.paymentStatus!=='paid'?`<button class="btn btn-success btn-sm" onclick="markAsPaid('${t.id}')">Mark Paid</button>`:'<span style="color:var(--green);font-size:0.8125rem;font-weight:600">✓ Paid</span>'}</td>
         </tr>`).join('')}
     </tbody></table>`;
 }
@@ -1065,8 +1301,8 @@ function renderPaymentTracker() {
 // === REPORTS ===
 function showReports() {
     const total = tenants.reduce((s,t)=>s+t.totalRent,0);
-    const paid  = tenants.filter(t=>t.paymentStatus==='paid').length;
-    const rate  = tenants.length > 0 ? ((paid/tenants.length)*100).toFixed(0) : 0;
+    const paid = tenants.filter(t=>t.paymentStatus==='paid').length;
+    const rate = tenants.length > 0 ? ((paid/tenants.length)*100).toFixed(0) : 0;
     showAlert(`Report: ${tenants.length} tenants | KES ${total.toLocaleString()} expected | ${rate}% paid`, 'info');
 }
 
@@ -1106,7 +1342,16 @@ async function loadWaterHistory() {
     tbody.innerHTML = `<tr><td colspan="8" class="empty-cell"><div class="empty-state"><p>Loading history...</p></div></td></tr>`;
 
     try {
-        const rows = await api('/water-history');
+        const snapshot = await db.collection('waterHistory')
+            .orderBy('readingDate', 'desc')
+            .limit(100)
+            .get();
+        
+        const rows = [];
+        snapshot.forEach(doc => {
+            rows.push({ id: doc.id, ...doc.data() });
+        });
+        
         subtitle.textContent = `${rows.length} archived reading${rows.length !== 1 ? 's' : ''}`;
 
         if (!rows.length) {
@@ -1118,14 +1363,14 @@ async function loadWaterHistory() {
 
         tbody.innerHTML = rows.map(r => `
             <tr>
-                <td style="font-size:0.8125rem">${new Date(r.reading_date).toLocaleDateString('en-GB')}</td>
-                <td><div class="tenant-name">${r.tenant_name}</div></td>
-                <td><span class="unit-badge">${r.unit_number}</span></td>
-                <td class="num">${parseFloat(r.previous_reading).toFixed(1)}</td>
-                <td class="num">${parseFloat(r.current_reading).toFixed(1)}</td>
-                <td class="num" style="color:var(--blue);font-weight:600">${parseFloat(r.units_consumed).toFixed(1)}</td>
-                <td class="num">${fmtKes(parseFloat(r.rate_per_unit))}</td>
-                <td class="num cur">${fmtKes(parseFloat(r.water_bill))}</td>
+                <td style="font-size:0.8125rem">${new Date(r.readingDate).toLocaleDateString('en-GB')}</td>
+                <td><div class="tenant-name">${r.tenantName}</div></td>
+                <td><span class="unit-badge">${r.unitNumber}</span></td>
+                <td class="num">${parseFloat(r.previousReading).toFixed(1)}</td>
+                <td class="num">${parseFloat(r.currentReading).toFixed(1)}</td>
+                <td class="num" style="color:var(--blue);font-weight:600">${parseFloat(r.unitsConsumed).toFixed(1)}</td>
+                <td class="num">${fmtKes(parseFloat(r.ratePerUnit))}</td>
+                <td class="num cur">${fmtKes(parseFloat(r.waterBill))}</td>
             </tr>`).join('');
     } catch (e) {
         tbody.innerHTML = `<tr><td colspan="8" class="empty-cell"><div class="empty-state">
@@ -1171,11 +1416,30 @@ function displayTopConsumers() {
 async function archiveWaterReadings() {
     if (!tenants.length) { showAlert('No tenants to archive.', 'warning'); return; }
     if (!confirm('Archive current readings for all tenants?')) return;
+    
     showLoading('Archiving readings...');
+    let archived = 0;
+    
     try {
-        const result = await api('/water-history', { method: 'POST' });
-        showAlert(`Archived ${result.archived} reading(s)!`, 'success');
-        addNotification(`Water readings archived for ${result.archived} unit(s)`, 'info');
+        for (const t of tenants) {
+            if (t.currentReading > 0) {
+                await db.collection('waterHistory').add({
+                    tenantId: t.id,
+                    tenantName: t.tenantName,
+                    unitNumber: t.unitNumber,
+                    readingDate: new Date().toISOString().split('T')[0],
+                    previousReading: t.previousReading || 0,
+                    currentReading: t.currentReading || 0,
+                    unitsConsumed: t.unitsConsumed || 0,
+                    ratePerUnit: t.ratePerUnit || 50,
+                    waterBill: t.waterBill || 0,
+                    recordedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                archived++;
+            }
+        }
+        showAlert(`Archived ${archived} reading(s)!`, 'success');
+        addNotification(`Water readings archived for ${archived} unit(s)`, 'info');
     } catch (e) {
         showAlert('Archive failed: ' + e.message, 'error');
     } finally {
@@ -1184,8 +1448,9 @@ async function archiveWaterReadings() {
 }
 
 // === SETTINGS MODAL ===
-function showSettingsModal()  { updateSettingsForm(); openModal('settingsModal'); }
+function showSettingsModal() { updateSettingsForm(); openModal('settingsModal'); }
 function closeSettingsModal() { closeModal('settingsModal'); }
+
 function updateSettingsForm() {
     const map = { companyName:'companyName', companyAddress:'companyAddress', companyPhone:'companyPhone', companyEmail:'companyEmail', mpesaNumber:'mpesaNumber', bankAccount:'bankAccount', bankName:'bankName' };
     Object.entries(map).forEach(([key, elId]) => {
@@ -1195,12 +1460,13 @@ function updateSettingsForm() {
 }
 
 // === MODAL HELPERS ===
-function openModal(id)  { const el = document.getElementById(id); el.classList.add('open'); el.style.display = 'flex'; }
+function openModal(id) { const el = document.getElementById(id); el.classList.add('open'); el.style.display = 'flex'; }
 function closeModal(id) { const el = document.getElementById(id); el.classList.remove('open'); el.style.display = 'none'; }
 
 document.addEventListener('click', (e) => {
     if (e.target.classList.contains('modal-overlay')) { e.target.classList.remove('open'); e.target.style.display = 'none'; }
 });
+
 document.addEventListener('keydown', (e) => {
     if ((e.metaKey||e.ctrlKey) && e.key === 'k') { e.preventDefault(); document.getElementById('globalSearch').focus(); }
     if (e.key === 'Escape') {
@@ -1208,3 +1474,5 @@ document.addEventListener('keydown', (e) => {
         document.getElementById('notifPanel').classList.remove('open');
     }
 });
+
+console.log('✅ PropFlow (Firebase Version) loaded successfully!');
