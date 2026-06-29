@@ -854,7 +854,28 @@
             </div>
         </div>
     </div>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
+<script>
+    // ============================================
+    // FIREBASE CONFIGURATION
+    // ============================================
+    const firebaseConfig = {
+        apiKey: "AIzaSyC1kRvoSmGuR__mlm31w0DNVTsHccrMrDc",
+        authDomain: "apertment-management-system.firebaseapp.com",
+        projectId: "apertment-management-system",
+        storageBucket: "apertment-management-system.firebasestorage.app",
+        messagingSenderId: "36404009603",
+        appId: "1:36404009603:web:7be9382d16ed85b46899b6"
+    };
+    
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    
+    console.log("✅ Firebase connected to:", firebaseConfig.projectId);
+</script>
     <script src="js/jkl.js"></script>
 </body>
 </html>
