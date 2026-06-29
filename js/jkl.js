@@ -68,7 +68,6 @@ async function loadAllTenants() {
                 id: doc.id,
                 tenantName: data.tenantName || data.name || 'Unknown',
                 unitNumber: data.unitNumber || 'N/A',
-                email: data.email || '',
                 phone: data.phone || '',
                 previousReading: data.previousReading || 0,
                 currentReading: data.currentReading || 0,
@@ -85,19 +84,9 @@ async function loadAllTenants() {
                 otherChargesBreakdown: {
                     electricity: data.ch_electricity || 0,
                     tokens: data.ch_tokens || 0,
-                    securityPump: data.ch_security_pump || 0,
-                    caretakerWifi: data.ch_caretaker_wifi || 0,
-                    wifiCCTV: data.ch_wifi_cctv || 0,
-                    security: data.ch_security || 0,
-                    rujuwasco: data.ch_rujuwasco || 0,
-                    careTaker: data.ch_care_taker || 0,
                     repairWorks: data.ch_repair_works || 0,
-                    bioDigester: data.ch_bio_digester || 0,
-                    repainting: data.ch_repainting || 0,
-                    wifi: data.ch_wifi || 0,
                     houseRefunds: data.ch_house_refunds || 0,
-                    garbage: data.ch_garbage || 0,
-                    other: data.ch_other || 0
+                    garbage: data.ch_garbage || 0
                 },
                 // Store full data for editing
                 _raw: data
