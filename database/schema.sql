@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS settings (
   company_name  VARCHAR(255)  NOT NULL DEFAULT 'PropFlow Properties',
   address       VARCHAR(500)  DEFAULT '',
   phone         VARCHAR(50)   DEFAULT '',
-  email         VARCHAR(255)  DEFAULT '',
   mpesa_number  VARCHAR(50)   DEFAULT '',
   bank_account  VARCHAR(100)  DEFAULT '',
   bank_name     VARCHAR(100)  DEFAULT '',
@@ -25,8 +24,8 @@ CREATE TABLE IF NOT EXISTS settings (
 
 -- Seed default settings row
 INSERT INTO settings (company_name, address, phone, email, mpesa_number, bank_account, bank_name)
-VALUES ('PropFlow Properties', '123 Moi Avenue, Nairobi, Kenya',
-        '+254 700 000 000', 'info@propflow.co.ke',
+VALUES ('JKL PROPERTIES', 'Nairobi, Kenya',
+        '+254 115558365', 'johnkennedymunjogu@gmail.com',
         '0700 000 000', '1234567890', 'Equity Bank')
 ON DUPLICATE KEY UPDATE id = id;
 
@@ -35,7 +34,6 @@ CREATE TABLE IF NOT EXISTS tenants (
   id                  INT AUTO_INCREMENT PRIMARY KEY,
   tenant_name         VARCHAR(255)   NOT NULL,
   unit_number         VARCHAR(50)    NOT NULL,
-  email               VARCHAR(255)   DEFAULT '',
   phone               VARCHAR(50)    DEFAULT '',
 
   -- Water meter
@@ -53,19 +51,9 @@ CREATE TABLE IF NOT EXISTS tenants (
   -- Other charges (individual columns for reporting)
   ch_electricity      DECIMAL(10,2)  DEFAULT 0,
   ch_tokens           DECIMAL(10,2)  DEFAULT 0,
-  ch_security_pump    DECIMAL(10,2)  DEFAULT 0,
-  ch_caretaker_wifi   DECIMAL(10,2)  DEFAULT 0,
-  ch_wifi_cctv        DECIMAL(10,2)  DEFAULT 0,
-  ch_security         DECIMAL(10,2)  DEFAULT 0,
-  ch_rujuwasco        DECIMAL(10,2)  DEFAULT 0,
-  ch_care_taker       DECIMAL(10,2)  DEFAULT 0,
   ch_repair_works     DECIMAL(10,2)  DEFAULT 0,
-  ch_bio_digester     DECIMAL(10,2)  DEFAULT 0,
-  ch_repainting       DECIMAL(10,2)  DEFAULT 0,
-  ch_wifi             DECIMAL(10,2)  DEFAULT 0,
   ch_house_refunds    DECIMAL(10,2)  DEFAULT 0,
   ch_garbage          DECIMAL(10,2)  DEFAULT 0,
-  ch_other            DECIMAL(10,2)  DEFAULT 0,
 
   -- Computed totals (stored for fast queries)
   other_charges       DECIMAL(10,2)  NOT NULL DEFAULT 0,
